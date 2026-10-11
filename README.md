@@ -11,6 +11,7 @@
 * **The model.** [Cyber-Tiel-Coder-35B-A3B-MLX-oQ6e-MTP](https://huggingface.co/peculiar-ragdoll/Cyber-Tiel-Coder-35B-A3B-MLX-oQ6e-MTP) (MIT), an abliterated, oQ6e-requantized derivative of [Ornith-1.5-35B-A3B](https://huggingface.co/ornith-ai/Ornith-1.5-35B-A3B) (via [huihui-ai](https://huggingface.co/huihui-ai/Huihui-Ornith-1.5-35B-A3B-abliterated)), a Qwen3.5-MoE-architecture 35B-A3B coder (40 layers: 30 Gated-DeltaNet + 10 full-attention; 256 experts, top-8, plus a shared expert; 6-bit experts, 8-bit attention/embedding/`lm_head`), running in MLX with a native multi-token-prediction (MTP) head. Weights are not redistributed here; download them from the Hugging Face repo above (see *Model credits / licenses*).
 * **What we did.** Exact speculative decoding with the checkpoint's own MTP head and a **row-exact verify pass**; a **custom Metal split-K GQA attention kernel** that reads K/V once for all verify rows and heads; and a series of scheduling and fusion improvements, each proven bit-identical or exact in distribution. Eight independently audited records took decode from 80.8 to 110.3 tok/s at 2K and from 45.2 to 62.8 tok/s at 128K.
 * **Agentic benchmark.** [Terminal-Bench 2.1](docs/TERMINAL_BENCH.md) (Harbor + Terminus-2), run entirely on the Mac: **73.3%** (22 of 30 pre-registered tasks, 95% CI 55.6–85.8), in line with the original model's vendor-reported 67.8%; decode stayed at 110 tok/s below 8K and 63 tok/s at 96–132K context during the run.
+* **Beyond this model.** The method (exact speculative decoding with a model's own MTP head, certified by bit-identity tests and a frozen benchmark) applies to any mixture-of-experts model that ships an MTP head (Qwen3.5/3.6, Ornith-1.5, Qwen3-Next, DeepSeek-V3, GLM-4.5 …) and to any Apple-silicon Mac with enough memory; unified-memory machines such as DGX Spark or Ryzen AI Max are natural targets for a port. See [Beyond this checkpoint](#beyond-this-checkpoint-any-moe-model-with-an-mtp-head).
 * **How it was measured.** A frozen benchmark harness: 7 exact context lengths, real code prompts, KV cache filled with real tokens, ≥ 3 runs × ≥ 512 generated tokens per cell, greedy *and* default sampling, medians reported, an independent auditor for every record.
 
 [![Trailer preview: decode tok/s from 2K to 128K, this work vs the first lossless baseline. Click to open the 100-second trailer (MP4).](assets/preview.gif)](assets/trailer.mp4)
@@ -92,6 +93,20 @@ All are lossless with respect to the target model; each has an environment flag,
 | **Bit-identical fusions and tile retunes** (add+RMSNorm, q/k norm + RoPE, GDN recurrence, projection tiles) | +0.7...+1.3% each |
 | Draft-side only: 32K-token draft vocabulary, 4096-token attention window on the MTP head | ≈ +3% (vocabulary); the target always verifies with the full `lm_head` and full attention |
 
+## Beyond this checkpoint: any MoE model with an MTP head
+
+The speed-up does not depend on this particular checkpoint. Speculative decoding with the model's **own** multi-token-prediction (MTP) head, made exact by a row-exact verify pass, needs no separate draft model and no training, so the method applies to every mixture-of-experts model that ships an MTP head, and the same frozen-benchmark and bit-identity methodology certifies the result on each new model.
+
+| Scope | What carries over | What to do |
+|---|---|---|
+| **Same architecture** (`qwen3_5_moe`, 35B-A3B): Qwen3.6-35B-A3B, Qwen3.5-35B-A3B, Ornith-1.5-35B-A3B and their fine-tunes | patch, kernels and configuration as they are | use an MLX checkpoint that **keeps** the MTP head (`language_model.mtp.*`). The original bf16 weights include it; the public MLX conversions checked on 2026-10-11 leave it out, so quantize from the original weights. Then re-run the identity tests and the benchmark harness. |
+| **Other MoE models with a native MTP head** (for example larger Qwen3.5 MoE models, Qwen3-Next, the DeepSeek-V3 family, GLM-4.5) | the exact speculative loop (row-exact verification, exact greedy and sampling acceptance with block verification, pre-queued draft, verify pipelining), row-exact quantized mat-vec, the benchmark and audit methodology | adapt the model-specific parts: the attention kernel is compiled for 16 query heads / 2 KV heads / head dim 256 (other GQA shapes need re-instantiating and re-tuning; multi-head latent attention needs its own kernel), the MTP-head wiring, and the Gated DeltaNet kernels (used only by hybrid linear-attention models) |
+
+**Hardware.**
+
+* **Any Apple-silicon Mac with enough memory.** The runtime (oMLX) supports M1–M5 Macs on macOS 15 or later; the numbers here were measured on one M4 Pro (20-core GPU, 48 GB, 273 GB/s). This model needs about 28 GB for the weights plus the bf16 KV cache (about 20 KB per token: 2.7 GB at 128K, 5.4 GB at 256K), so 48 GB Macs and larger hold it; 64–512 GB Macs can hold the larger MTP models above. Decode speed follows memory bandwidth and GPU size. The attention split sizes are tuned for 20 GPU cores: they stay exact on any chip, and re-tuning only changes speed. On other chip generations, re-run the bundled kernel and identity tests first.
+* **Other unified-memory machines.** NVIDIA DGX Spark (GB10, 128 GB, 273 GB/s) and AMD Ryzen AI Max+ 395 "Strix Halo" (up to 128 GB, 256 GB/s) are in the same memory-bandwidth class as the M4 Pro, with more memory, which makes them natural targets for the same approach. The method is hardware-independent; this code is Apple-specific (oMLX runs on macOS, the kernels are Metal), so those machines need a port: on DGX Spark through MLX's CUDA backend or a CUDA runtime with MTP support, on Strix Halo through a ROCm or Vulkan runtime.
+
 ## Engineering notes
 
 What worked and why, with practical tips: row-exact verification, wave-aligned splits, bit-identity testing of every kernel parameter (even grid-only ones), clearing MLX's buffer pool after prefill (6-7% at 128K), A/B protocol, where the time goes. See [`docs/ENGINEERING_NOTES.md`](docs/ENGINEERING_NOTES.md).
@@ -169,8 +184,11 @@ No. Greedy output is byte-identical to non-speculative decoding (57/57 coding pr
 **Which model does it run?**
 [Cyber-Tiel-Coder-35B-A3B-MLX-oQ6e-MTP](https://huggingface.co/peculiar-ragdoll/Cyber-Tiel-Coder-35B-A3B-MLX-oQ6e-MTP), a 6-bit MLX ("oQ6e") checkpoint with a native multi-token-prediction head, derived from Ornith-1.5-35B-A3B. Architecture: Qwen3.5/3.6-35B-A3B (`qwen3_5_moe`: 40 layers = 30 Gated DeltaNet + 10 full attention, 256 experts top-8 plus a shared expert, about 3B active parameters per token).
 
-**Does it work with Qwen3.6-35B-A3B or other checkpoints?**
-The runtime targets the `qwen3_5_moe` architecture with this quantization layout and an MTP head stored under `language_model.mtp.*`. All published numbers are for the checkpoint above; other fine-tunes are untested here, and their speed depends on how often their MTP drafts are accepted.
+**Can it speed up other MoE models, such as Qwen3.6-35B-A3B or Ornith-1.5?**
+Yes, that is the point of the method: it uses the model's own MTP head, so it applies to any mixture-of-experts model that ships one. Checkpoints of the same architecture (`qwen3_5_moe` 35B-A3B: Qwen3.6, Qwen3.5, Ornith-1.5 and fine-tunes) use the code as it is, given an MLX conversion that keeps the MTP head; other MoE models with MTP heads (Qwen3-Next, the DeepSeek-V3 family, GLM-4.5, larger Qwen3.5 models) reuse the exact speculative loop and the methodology, with the attention kernel and MTP wiring adapted. Speed on each model depends on how often its MTP drafts are accepted, and is measured with the same benchmark harness.
+
+**Does it run on other Macs, or on DGX Spark / Ryzen AI Max machines?**
+Any Apple-silicon Mac on macOS 15 or later with enough unified memory (48 GB or more for this model) runs it; speed follows memory bandwidth and GPU size. NVIDIA DGX Spark and AMD Ryzen AI Max+ 395 have the same bandwidth class as the M4 Pro and 128 GB of unified memory, so the method fits them too, but the code (oMLX, Metal kernels) is Apple-specific and needs a port there.
 
 **What Mac do I need?**
 Apple silicon. The numbers were measured on an M4 Pro (14-core CPU, 20-core GPU, 48 GB, macOS 27.0.1); the weights take about 28 GB, and 48 GB covers contexts up to 128K as is and 256K with a raised GPU wired-memory limit. Other chips run it at different speeds (kernel split sizes are tuned to 20 GPU cores); machines with less than 48 GB are untested.
