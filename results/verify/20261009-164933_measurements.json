@@ -1,0 +1,78 @@
+{
+ "ts": "20261009-164933",
+ "config": {
+  "name": "q6-omlx-mtp2-rowexact-c35v16p2c-rps2-dtemp03-vocab32k-shared-flush2-mtpwin4k",
+  "variant": "Q6-oQ6e",
+  "runtime": "omlx-main-cc1fdc9+rowexact+c35gqa-v16+p2c16+depth2+vocab32k+sharedrows+verifyflush2+mtpwindow4096+rps2+drafttemp0.3",
+  "cmd": [
+   "configs/omlx_q6.sh"
+  ],
+  "env": {
+   "MTP": "true",
+   "OMLX_MTP_ROW_EXACT_FORCE": "1",
+   "C35_GQA_ATTN": "1",
+   "CACHE": "1",
+   "C35_SHARED_ROWS_MIN_TILES": "0",
+   "C35_DRAFT_VOCAB": "models/draft_vocab/vocab32k.json",
+   "OMLX_EXTRA": "\"mtp_fixed_depth\": 2",
+   "C35_VERIFY_FLUSH": "2",
+   "C35_GQA_VERSION": "16",
+   "C35_MTP_WINDOW": "4096",
+   "C35_GQA_P2": "3",
+   "C35_RPS": "2",
+   "C35_DRAFT_TEMP": "0.3"
+  },
+  "baseline_env": {
+   "MTP": "false",
+   "OMLX_MTP_ROW_EXACT_FORCE": "1",
+   "C35_GQA_ATTN": "1",
+   "CACHE": "1",
+   "C35_SHARED_ROWS_MIN_TILES": "0",
+   "C35_GQA_VERSION": "16",
+   "C35_GQA_P2": "3",
+   "C35_RPS": "2"
+  },
+  "identity_env_override": {
+   "CACHE": "0"
+  },
+  "url": "http://127.0.0.1:8000",
+  "model": "coder-q6",
+  "mtp": "on",
+  "spec": "lightning-mtp-depth2",
+  "quality_profile": "numeric"
+ },
+ "speed": {
+  "2048/default": 102.53,
+  "2048/greedy": 107.24,
+  "4096/default": 101.17,
+  "4096/greedy": 104.29,
+  "16384/default": 91.2,
+  "16384/greedy": 95.57,
+  "32768/default": 89.66,
+  "32768/greedy": 86.28,
+  "40960/default": 81.65,
+  "40960/greedy": 81.47,
+  "65536/default": 72.41,
+  "65536/greedy": 76.32,
+  "131072/default": 59.85,
+  "131072/greedy": 57.21,
+  "constancy/131072/greedy": 55.17,
+  "stability/2048/default": 102.57,
+  "stability/2048/greedy": 107.64
+ },
+ "quality": "profile=numeric suite=quick ref=coder-q6 cand=coder-q6\n  coding     PASS  ref 47/57, cand 48/57 (delta +1; allowed drop 2); flips: HumanEval/120:pass->FAIL, HumanEval/126:fail->pass, Mbpp/301:fail->pass\n  reasoning  PASS  ref 28/30, cand 26/30 (delta -2; allowed drop 2); flips: 87:pass->FAIL, 527:pass->FAIL, 923:pass->FAIL, 1187:fail->pass\n  tools      PASS  ref 14/14, cand 14/14 (delta +0; allowed drop 1)\n  needle     PASS  ref 3/3, cand 3/3\n  identity   INFO  0/6 IDENTICAL -- bench_ctx2048_task0: DIVERGE at char 24; bench_ctx2048_task1: DIVERGE at char 96; bench_ctx2048_task2: DIVERGE at char 74; coding0: DIVERGE at char 176; coding1: DIVERGE at char 158; coding2: DIVERGE at char 303\nOVERALL: PASS",
+ "identity": "profile=lossless suite=quick ref=coder-q6 cand=coder-q6\n  coding     SKIP  missing in ref\n  reasoning  SKIP  missing in ref\n  tools      SKIP  missing in ref\n  needle     SKIP  missing in ref\n  identity   PASS  6/6 IDENTICAL\nOVERALL: PASS",
+ "thermal_start": "Nominal",
+ "swap_delta_mb": 0.0,
+ "thermal": "Nominal",
+ "identity_32k": "IDENTICAL",
+ "minutes": 16.338796416918438,
+ "extract_of": {
+  "file": "20261009-164933.json",
+  "sha256": "db531bc1c067627789c0d39160bfb9be45cb27e8f79856f23b77b6cc6112ecd8",
+  "omitted_fields": [
+   "fail",
+   "verdict"
+  ]
+ }
+}

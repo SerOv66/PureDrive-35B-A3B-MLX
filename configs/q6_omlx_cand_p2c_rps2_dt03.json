@@ -1,0 +1,41 @@
+{
+ "name": "q6-omlx-mtp2-rowexact-c35v16p2c-rps2-dtemp03-vocab32k-shared-flush2-mtpwin4k",
+ "variant": "Q6-oQ6e",
+ "runtime": "omlx-main-cc1fdc9+rowexact+c35gqa-v16+p2c16+depth2+vocab32k+sharedrows+verifyflush2+mtpwindow4096+rps2+drafttemp0.3",
+ "cmd": [
+  "configs/omlx_q6.sh"
+ ],
+ "env": {
+  "MTP": "true",
+  "OMLX_MTP_ROW_EXACT_FORCE": "1",
+  "C35_GQA_ATTN": "1",
+  "CACHE": "1",
+  "C35_SHARED_ROWS_MIN_TILES": "0",
+  "C35_DRAFT_VOCAB": "configs/draft_vocab_32k.json",
+  "OMLX_EXTRA": "\"mtp_fixed_depth\": 2",
+  "C35_VERIFY_FLUSH": "2",
+  "C35_GQA_VERSION": "16",
+  "C35_MTP_WINDOW": "4096",
+  "C35_GQA_P2": "3",
+  "C35_RPS": "2",
+  "C35_DRAFT_TEMP": "0.3"
+ },
+ "baseline_env": {
+  "MTP": "false",
+  "OMLX_MTP_ROW_EXACT_FORCE": "1",
+  "C35_GQA_ATTN": "1",
+  "CACHE": "1",
+  "C35_SHARED_ROWS_MIN_TILES": "0",
+  "C35_GQA_VERSION": "16",
+  "C35_GQA_P2": "3",
+  "C35_RPS": "2"
+ },
+ "identity_env_override": {
+  "CACHE": "0"
+ },
+ "url": "http://127.0.0.1:8000",
+ "model": "coder-q6",
+ "mtp": "on",
+ "spec": "lightning-mtp-depth2",
+ "quality_profile": "numeric"
+}

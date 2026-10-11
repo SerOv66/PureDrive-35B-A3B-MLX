@@ -1,0 +1,42 @@
+# One line per run (id = MMDD-HHMMSS-harness-task-rep[-ctx]): ok=check passed, wall=total time, req=main requests, aux=auxiliary requests (e.g. compaction summaries),
+# tcalls=tool calls, ptok/ctok=prompt/completion tokens, cached=prefix-cache hit, dec=server-reported decode tok/s (completion tokens / generation_duration), ttft_med/max=time to first token, leak=tool-call text leaks, model_s=sum of request durations
+1010-101901-pi-t1_bugfix-r1            ok=1 wall=  26.1s req=  5 aux=0 tcalls=  5 ptok=  17654 cached=75% ctok= 1014 dec=107.9 ttft_med= 1.02 max= 12.5 leak=0 model_s=25.4
+1010-101928-hermes-t1_bugfix-r1        ok=1 wall= 150.9s req= 32 aux=1 tcalls= 31 ptok= 379048 cached=94% ctok=12627 dec=129.0 ttft_med= 1.22 max= 11.8 leak=0 model_s=147.5
+1010-102159-pi-t2_feature-r1           ok=1 wall=  22.7s req=  6 aux=0 tcalls=  6 ptok=  21877 cached=78% ctok= 1660 dec=106.3 ttft_med= 1.04 max=  2.0 leak=0 model_s=22.0
+1010-102222-hermes-t2_feature-r1       ok=1 wall=  61.5s req= 11 aux=1 tcalls= 11 ptok=  94676 cached=92% ctok= 4112 dec=102.7 ttft_med= 0.81 max=  8.9 leak=0 model_s=58.6
+1010-102324-pi-t3_refactor-r1          ok=1 wall=  19.8s req= 11 aux=0 tcalls= 10 ptok=  37167 cached=88% ctok= 1387 dec=110.1 ttft_med= 0.44 max=  2.1 leak=0 model_s=19.3
+1010-102344-hermes-t3_refactor-r1      ok=1 wall= 124.1s req= 36 aux=1 tcalls= 69 ptok= 558590 cached=96% ctok= 9353 dec=119.9 ttft_med= 0.85 max=  4.2 leak=0 model_s=119.1
+1010-102548-pi-t4_debug-r1             ok=1 wall=  17.6s req=  8 aux=0 tcalls=  9 ptok=  30404 cached=84% ctok= 1136 dec=110.7 ttft_med= 0.55 max=  2.0 leak=0 model_s=17.0
+1010-102606-hermes-t4_debug-r1         ok=1 wall=  20.8s req=  6 aux=1 tcalls=  8 ptok=  49452 cached=88% ctok= 1076 dec=121.2 ttft_med= 1.61 max=  2.7 leak=0 model_s=18.5
+1010-102627-pi-t1_bugfix-r2            ok=1 wall=  15.4s req=  5 aux=0 tcalls=  5 ptok=  18595 cached=83% ctok= 1191 dec=113.1 ttft_med= 1.03 max=  1.5 leak=0 model_s=14.8
+1010-102643-hermes-t1_bugfix-r2        ok=1 wall=  40.7s req=  6 aux=1 tcalls=  6 ptok=  46510 cached=89% ctok= 3339 dec=113.3 ttft_med= 1.39 max=  2.5 leak=0 model_s=38.0
+1010-102724-pi-t2_feature-r2           ok=1 wall=  25.8s req=  6 aux=0 tcalls=  6 ptok=  26257 cached=78% ctok= 1863 dec=105.1 ttft_med= 1.27 max=  2.0 leak=0 model_s=25.2
+1010-102750-hermes-t2_feature-r2       ok=1 wall=  45.9s req= 10 aux=1 tcalls= 10 ptok=  86436 cached=93% ctok= 3502 dec=109.7 ttft_med= 0.76 max=  3.1 leak=0 model_s=43.0
+1010-102836-pi-t3_refactor-r2          ok=1 wall=  22.6s req= 15 aux=0 tcalls= 14 ptok=  50244 cached=91% ctok= 1563 dec=111.9 ttft_med= 0.42 max=  2.1 leak=0 model_s=22.0
+1010-102859-hermes-t3_refactor-r2      ok=1 wall=  30.6s req=  5 aux=1 tcalls= 14 ptok=  36966 cached=83% ctok= 2094 dec=114.9 ttft_med= 2.14 max=  3.7 leak=0 model_s=28.5
+1010-102930-pi-t4_debug-r2             ok=1 wall=  15.5s req=  6 aux=0 tcalls=  7 ptok=  24403 cached=77% ctok=  930 dec=118.8 ttft_med= 1.01 max=  2.0 leak=0 model_s=15.0
+1010-102945-hermes-t4_debug-r2         ok=1 wall= 133.3s req= 31 aux=1 tcalls= 41 ptok= 429568 cached=95% ctok=12102 dec=134.5 ttft_med= 1.24 max=  3.1 leak=0 model_s=129.8
+1010-103159-pi-t1_bugfix-r3            ok=1 wall=  13.7s req=  5 aux=0 tcalls=  5 ptok=  18311 cached=84% ctok=  991 dec=110.6 ttft_med= 0.96 max=  1.5 leak=0 model_s=13.1
+1010-103213-hermes-t1_bugfix-r3        ok=1 wall=  27.0s req=  5 aux=1 tcalls=  5 ptok=  38542 cached=87% ctok=  704 dec=118.1 ttft_med= 1.45 max= 13.5 leak=0 model_s=24.8
+1010-103240-pi-t2_feature-r3           ok=1 wall=  48.1s req= 10 aux=0 tcalls= 10 ptok=  49328 cached=91% ctok= 4119 dec=101.8 ttft_med= 0.69 max=  1.2 leak=0 model_s=47.4
+1010-103329-hermes-t2_feature-r3       ok=1 wall=  21.9s req=  4 aux=1 tcalls=  4 ptok=  27979 cached=84% ctok= 1473 dec=113.9 ttft_med= 1.85 max=  2.4 leak=0 model_s=19.4
+1010-103351-pi-t3_refactor-r3          ok=1 wall=  68.5s req= 27 aux=0 tcalls= 26 ptok= 142171 cached=93% ctok= 5742 dec=114.1 ttft_med= 0.48 max=  2.1 leak=0 model_s=67.9
+1010-103459-hermes-t3_refactor-r3      ok=1 wall=  39.9s req=  7 aux=1 tcalls= 15 ptok=  57930 cached=85% ctok= 2827 dec=117.0 ttft_med= 2.11 max=  3.5 leak=0 model_s=37.6
+1010-103540-pi-t4_debug-r3             ok=1 wall=  14.7s req=  5 aux=0 tcalls=  6 ptok=  20114 cached=74% ctok=  898 dec=118.9 ttft_med= 0.83 max=  2.3 leak=0 model_s=14.2
+1010-103555-hermes-t4_debug-r3         ok=1 wall=  47.7s req= 21 aux=1 tcalls= 23 ptok= 232237 cached=96% ctok= 3201 dec=122.8 ttft_med= 0.62 max=  2.3 leak=0 model_s=44.6
+1010-103715-pi-t5_long-r1-ctx256k      ok=1 wall= 302.3s req= 48 aux=0 tcalls= 47 ptok=1659491 cached=96% ctok=12942 dec= 89.8 ttft_med= 2.24 max= 13.2 leak=0 model_s=295.8
+1010-110252-hermes-t5_long-r1-ctx256k  ok=0 wall=1202.1s req= 61 aux=1 tcalls= 60 ptok=3001965 cached=95% ctok=42662 dec= 77.4 ttft_med= 1.55 max= 46.8 leak=0 model_s=1189.6
+1010-112319-pi-t5_long-r1-ctx96k       ok=1 wall= 468.7s req= 31 aux=0 tcalls= 29 ptok=1306001 cached=91% ctok=13530 dec= 87.2 ttft_med= 3.89 max= 49.7 leak=0 model_s=462.6
+1010-113110-hermes-t5_long-r1-ctx96k   ok=0 wall= 655.4s req= 38 aux=1 tcalls=329 ptok=1250068 cached=91% ctok=26379 dec= 99.2 ttft_med= 2.78 max= 39.1 leak=0 model_s=648.7
+
+harness x task: n, successi, wall mediana (s), richieste med, token prompt/compl med, prefix-hit med, decode tok/s (medio ponderato), TTFT med (s)
+hermes  t1_bugfix    n=3 ok=3/3 wall=  40.7 req=  6.0 ptok=   46510 ctok=  3339 hit=89% dec=120.1 ttft= 1.39
+hermes  t2_feature   n=3 ok=3/3 wall=  45.9 req= 10.0 ptok=   86436 ctok=  3502 hit=92% dec=108.8 ttft= 0.81
+hermes  t3_refactor  n=3 ok=3/3 wall=  39.9 req=  7.0 ptok=   57930 ctok=  2827 hit=85% dec=117.3 ttft= 2.11
+hermes  t4_debug     n=3 ok=3/3 wall=  47.7 req= 21.0 ptok=  232237 ctok=  3201 hit=95% dec=126.2 ttft= 1.24
+hermes  t5_long      n=2 ok=0/2 wall= 928.8 req= 49.5 ptok= 2126016 ctok= 34520 hit=93% dec= 88.3 ttft= 2.17
+pi      t1_bugfix    n=3 ok=3/3 wall=  15.4 req=  5.0 ptok=   18311 ctok=  1014 hit=83% dec=110.5 ttft= 1.02
+pi      t2_feature   n=3 ok=3/3 wall=  25.8 req=  6.0 ptok=   26257 ctok=  1863 hit=78% dec=104.4 ttft= 1.04
+pi      t3_refactor  n=3 ok=3/3 wall=  22.6 req= 15.0 ptok=   50244 ctok=  1563 hit=91% dec=112.0 ttft= 0.44
+pi      t4_debug     n=3 ok=3/3 wall=  15.5 req=  6.0 ptok=   24403 ctok=   930 hit=77% dec=116.1 ttft= 0.83
+pi      t5_long      n=2 ok=2/2 wall= 385.5 req= 39.5 ptok= 1482746 ctok= 13236 hit=94% dec= 88.5 ttft= 3.07

@@ -1,0 +1,18 @@
+model:
+  default: coder-q6
+  provider: omlx
+  context_length: __CTX__
+  max_tokens: 16384
+providers:
+  omlx:
+    name: oMLX
+    base_url: http://127.0.0.1:__PORT__/v1
+    api_key: local
+    api_mode: chat_completions
+    default_model: coder-q6
+terminal:
+  backend: local
+  cwd: .
+  timeout: 180
+agent:
+  max_turns: 150

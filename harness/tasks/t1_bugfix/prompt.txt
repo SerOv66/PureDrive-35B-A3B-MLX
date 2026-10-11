@@ -1,0 +1,1 @@
+In the current project (Python, library `ledger.py`) some tests in `tests/` fail. Run the tests with `python -m pytest -q`, find the cause of the failures in the code of `ledger.py` and fix it. Do not modify the tests. When all tests pass, reply with a one-line summary.

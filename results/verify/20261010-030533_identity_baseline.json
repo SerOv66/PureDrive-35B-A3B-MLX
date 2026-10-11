@@ -1,0 +1,105 @@
+{
+ "schema": 1,
+ "created": "2026-10-10T03:20:07",
+ "suite": "quick",
+ "url": "http://127.0.0.1:8000",
+ "model": "coder-q6",
+ "harness": {
+  "script": "quality/run_quality.py",
+  "sha256": "193505206eed7d36cfab7606566438634a290c4671cbc7d279cd3fd5344aeb38",
+  "thresholds_sha256": "f966960cd0970ba77d09ad8ff7eaff3dc54b61a13a0c0cc9566b5b2b15e12d9b",
+  "git_commit": null,
+  "python": "3.12.13",
+  "platform": "macOS-27.0.1-arm64-arm-64bit"
+ },
+ "datasets": {
+  "HumanEvalPlus.jsonl.gz": "272720b90ac375502c8ed23cd791c2a93dfb22a911641a494da74a426c09f101",
+  "MbppPlus.jsonl.gz": "af43697e8791c4c149bdfd6b489d8b5412507551ac20e28a439f650b8225db63",
+  "gsm8k_test.jsonl": "3730d312f6e3440559ace48831e51066acaca737f6eabec99bccb9e4b3c39d14"
+ },
+ "sampling": {
+  "temperature": 0,
+  "top_p": 1.0,
+  "top_k": 1,
+  "seed": 1234,
+  "thinking": "off (coding/reasoning/tools)"
+ },
+ "server": {
+  "/v1/models": {
+   "object": "list",
+   "data": [
+    {
+     "id": "coder-q6",
+     "object": "model",
+     "owned_by": "omlx",
+     "max_model_len": 262144
+    }
+   ]
+  },
+  "/props": "unavailable: RuntimeError",
+  "/health": "unavailable: RuntimeError"
+ },
+ "parts": {
+  "identity": {
+   "score": null,
+   "passed": null,
+   "n": 6,
+   "compared": 0,
+   "items": [
+    {
+     "id": "bench_ctx2048_task0",
+     "text": "The user has provided a chunk of the asyncio source code (the `__init__.py`, `__main__.py`, and the beginning of `base_events.py`). They want me to implement a new module that adds an asynchronous token-bucket rate limiter integrated with the existing primitives.\n\nLet me think about this carefully. The task is:\n1. Implement a new module that adds an asynchronous token-bucket rate limiter integrated with the existing asyncio primitives.\n2. Provide the complete implementation with type hints and docstrings.\n3. Explain the design decisions.\n4. Write a full unittest test suite for it.\n\nThe \"existing primitives\" here are the asyncio event loop, tasks, futures, locks, etc. The rate limiter should integrate with these \u2014 meaning it should use `loop.call_soon`, `asyncio.sleep`, `asyncio.Lock`, `asyncio.Event`, tasks, etc.\n\nLet me design a token-bucket rate limiter.\n\nA token bucket works like this:\n- There's a bucket with a maximum capacity (max_tokens).\n- Tokens are added at a fixed rate (rate tokens per second).\n- Consumers acquire tokens; if there aren't enough, they wait until enough accumulate.\n- This allows bursts up",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 15.4,
+     "vs_ref": null
+    },
+    {
+     "id": "bench_ctx2048_task1",
+     "text": "Let me carefully review the code provided. The user wants me to identify concrete bugs, race conditions, error-handling gaps, and performance problems, citing exact functions. Then rewrite the three most problematic functions with fixes and explain each change.\n\nLet me analyze the code carefully.\n\nThe code is from CPython's asyncio package. Let me look at the specific files:\n1. `asyncio/__init__.py`\n2. `asyncio/__main__.py`\n3. `asyncio/base_events.py` (partial)\n\nLet me go through each carefully.\n\n### `asyncio/__init__.py`\n\n```python\n__all__ = (base_events.__all__ +\n           coroutines.__all__ +\n           ...\n           transports.__all__)\n```\n\nThis concatenates `__all__` tuples. If there are duplicate names across modules, they'll appear multiple times in `__all__`. This is a minor issue but not really a bug. Actually `__all__` is used for `from asyncio import *`, duplicates just mean names get bound multiple times, harmless.\n\nWait, there's a subtle issue: `__all__` is a tuple concatenation. That's fine.\n\nActually, one",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 5.49,
+     "vs_ref": null
+    },
+    {
+     "id": "bench_ctx2048_task2",
+     "text": "The user has pasted a large chunk of Python's asyncio source code (partial), and wants comprehensive unittest tests covering normal behavior, edge cases, and error paths of the main public classes and functions.\n\nLet me think about what's actually in this code. The code shown is:\n1. `asyncio/__init__.py` - package init\n2. `asyncio/__main__.py` - asyncio REPL\n3. `asyncio/base_events.py` - partial, up to `_ipaddr_info` and `_set_reuseport` etc.\n\nThe code is truncated mid-function (`if type == socket` at the end). So I only have partial visibility into base_events.py.\n\nThe task: \"Write comprehensive unit tests (unittest) for the code above, covering normal behaviour, edge cases and error paths of the main public classes and functions. Include the complete test code and a short explanation of what each test group verifies.\"\n\nI need to write tests for the code shown. But the code is incomplete/truncated. The main public classes/functions visible:\n- In `__init__.py`: imports of many submodules, `__all__` construction, win32/unix branch.\n- In `__main__.py`:",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 5.49,
+     "vs_ref": null
+    },
+    {
+     "id": "coding0",
+     "text": "The user wants a Python function to merge overlapping intervals, plus time complexity explanation. Let me write it directly.\n\nThe standard approach: sort by start, then merge.\n\nLet me write clean code.\n</think>\n\n```python\ndef merge_intervals(intervals):\n    if not intervals:\n        return []\n\n    # Sort by start time; O(n log n)\n    intervals.sort(key=lambda iv: iv[0])\n\n    merged = [intervals[0]]\n    for start, end in intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:          # overlap (touching counts as overlap)\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n```\n\n**How it works:** Sorting by start time guarantees that any interval overlapping the current merged one appears consecutively, so a single left-to-right pass suffices. Each new interval either extends the last merged interval's end (taking the max) or starts a fresh one.\n\n**Time complexity:** O(n log n), dominated by the sort. The merge pass is O(n), so the",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 3.72,
+     "vs_ref": null
+    },
+    {
+     "id": "coding1",
+     "text": "The user wants an LRU cache class using collections.OrderedDict with get and put methods, plus a usage example. This is a straightforward implementation task.\n\nLet me write a clean implementation.\n\nThe LRU cache:\n- get(key): return value if present, else -1. Move accessed item to end (most recently used).\n- put(key, value): insert/update, and if over capacity, evict least recently used (front of OrderedDict).\n\nLet me write it.\n</think>\n\n```python\nfrom collections import OrderedDict\n\n\nclass LRUCache:\n    def __init__(self, capacity: int):\n        if capacity < 1:\n            raise ValueError(\"capacity must be >= 1\")\n        self.capacity = capacity\n        self.cache = OrderedDict()\n\n    def get(self, key):\n        if key not in self.cache:\n            return -1\n        self.cache.move_to_end(key)  # mark as most recently used\n        return self.cache[key]\n\n    def put(self, key, value):\n        if key in self.cache:\n            self.cache.move_to_end(key)\n        self.cache[key] = value\n        if len(self.cache) > self.capacity:\n            self.cache",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 3.71,
+     "vs_ref": null
+    },
+    {
+     "id": "coding2",
+     "text": "The user wants an explanation of the difference between asyncio.gather and asyncio.wait, with minimal runnable examples of each.\n\nLet me explain the key differences:\n\n1. `asyncio.gather` - collects results from coroutines, returns them in order, raises on first exception (unless return_exceptions=True). It's the higher-level, more convenient API.\n\n2. `asyncio.wait` - waits for a set of tasks/futures to complete, returns (done, pending) sets. It's lower-level, gives you control over which completed vs which are still pending.\n\nLet me write minimal runnable examples.\n\nKey differences:\n- `gather` returns results in the order the coroutines were passed, regardless of completion order. `wait` returns sets of done/pending.\n- `gather` raises the first exception by default; `wait` doesn't raise, you inspect results.\n- `gather` is for collecting results; `wait` is for controlling flow based on completion.\n- `wait` accepts tasks/futures; `gather` accepts coroutines or tasks.\n\nLet me write clean examples.\n</think>\n\n## Core difference\n\n`asyncio.gather` is a **results-collecting** helper: it runs cor",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 3.7,
+     "vs_ref": null
+    }
+   ],
+   "seconds": 38.6
+  }
+ },
+ "timings": {
+  "identity": 38.6
+ },
+ "total_seconds": 38.6
+}

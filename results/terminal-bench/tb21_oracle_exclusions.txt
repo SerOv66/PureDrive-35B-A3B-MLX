@@ -1,0 +1,2 @@
+path-tracing	not oracle-solvable under Rosetta (oracle reward 0: /jail/reconstructed.ppm missing, output-producing step fails)
+protein-assembly	oracle reward 0: /app/gblock.txt not produced (oracle solution depends on an external resource unavailable here)

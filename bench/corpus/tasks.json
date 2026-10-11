@@ -1,0 +1,5 @@
+[
+  "Using the code above as the existing codebase, implement a new module that adds an asynchronous token-bucket rate limiter integrated with the existing primitives. Provide the complete implementation with type hints and docstrings, explain the design decisions, and then write a full unittest test suite for it.",
+  "Do a careful code review of the code above: identify concrete bugs, race conditions, error-handling gaps and performance problems, citing the exact functions involved. Then rewrite the three most problematic functions with fixes and explain each change.",
+  "Write comprehensive unit tests (unittest) for the code above, covering normal behaviour, edge cases and error paths of the main public classes and functions. Include the complete test code and a short explanation of what each test group verifies."
+]

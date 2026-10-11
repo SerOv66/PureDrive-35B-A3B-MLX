@@ -1,0 +1,60 @@
+{
+ "name": "q6-omlx-mtp2-rowexact-c35v31brule-p2c-rps2-dtemp03-vocab32k-shared-flush2-mtpwin4k-fuseglue-blockverify-rps6u4-gdnrec8-dcompile-fastcommit-qkprep-predraft-brule2-qkmain-attnout",
+ "variant": "Q6-oQ6e",
+ "runtime": "omlx-main-cc1fdc9+rowexact+c35gqa-v31-brule+p2c16+depth2+vocab32k+sharedrows+verifyflush2+mtpwindow4096+rps2+drafttemp0.3+fuseglue+blockverify+rps6u4+gdnrec8+dcompile+fastcommit+qkprep+predraft+brule2+qkmain+attnout",
+ "cmd": [
+  "configs/omlx_q6.sh"
+ ],
+ "env": {
+  "MTP": "true",
+  "OMLX_MTP_ROW_EXACT_FORCE": "1",
+  "C35_GQA_ATTN": "1",
+  "CACHE": "1",
+  "C35_SHARED_ROWS_MIN_TILES": "0",
+  "C35_DRAFT_VOCAB": "configs/draft_vocab_32k.json",
+  "OMLX_EXTRA": "\"mtp_fixed_depth\": 2",
+  "C35_VERIFY_FLUSH": "2",
+  "C35_GQA_VERSION": "31",
+  "C35_MTP_WINDOW": "4096",
+  "C35_GQA_P2": "3",
+  "C35_RPS": "2",
+  "C35_DRAFT_TEMP": "0.3",
+  "C35_FUSE_GLUE": "1",
+  "C35_BLOCK_VERIFY": "1",
+  "C35_RPS6U": "4",
+  "C35_GDN_REC_ROWS": "8",
+  "C35_GQA_BRULE": "2",
+  "C35_FAST_COMMIT": "1",
+  "C35_QK_PREP": "1",
+  "C35_DRAFT_COMPILE": "1",
+  "C35_MTP_PREDRAFT": "1",
+  "C35_QK_PREP_MAIN": "1",
+  "C35_ATTN_OUT": "1"
+ },
+ "baseline_env": {
+  "MTP": "false",
+  "OMLX_MTP_ROW_EXACT_FORCE": "1",
+  "C35_GQA_ATTN": "1",
+  "CACHE": "1",
+  "C35_SHARED_ROWS_MIN_TILES": "0",
+  "C35_GQA_VERSION": "31",
+  "C35_GQA_P2": "3",
+  "C35_RPS": "2",
+  "C35_FUSE_GLUE": "1",
+  "C35_RPS6U": "4",
+  "C35_GDN_REC_ROWS": "8",
+  "C35_GQA_BRULE": "2",
+  "C35_FAST_COMMIT": "1",
+  "C35_QK_PREP": "1",
+  "C35_QK_PREP_MAIN": "1",
+  "C35_ATTN_OUT": "1"
+ },
+ "identity_env_override": {
+  "CACHE": "0"
+ },
+ "url": "http://127.0.0.1:8000",
+ "model": "coder-q6",
+ "mtp": "on",
+ "spec": "lightning-mtp-depth2",
+ "quality_profile": "numeric"
+}

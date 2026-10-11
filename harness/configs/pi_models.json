@@ -1,0 +1,14 @@
+{
+  "providers": {
+    "omlx": {
+      "baseUrl": "http://127.0.0.1:__PORT__/v1",
+      "api": "openai-completions",
+      "apiKey": "local",
+      "authHeader": true,
+      "models": [
+        { "id": "coder-q6", "name": "coder-q6", "reasoning": false, "input": ["text"],
+          "cost": {"input":0,"output":0,"cacheRead":0,"cacheWrite":0}, "contextWindow": __CTX__, "maxTokens": 16384 }
+      ]
+    }
+  }
+}

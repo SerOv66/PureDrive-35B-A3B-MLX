@@ -1,0 +1,64 @@
+{
+ "ts": "20261009-015457",
+ "config": {
+  "name": "q6-omlx-mtp-rowexact-c35",
+  "variant": "Q6-oQ6e",
+  "runtime": "omlx-main-cc1fdc9+rowexact+c35gqa-v2",
+  "cmd": [
+   "configs/omlx_q6.sh"
+  ],
+  "env": {
+   "MTP": "true",
+   "OMLX_MTP_ROW_EXACT_FORCE": "1",
+   "C35_GQA_ATTN": "1",
+   "CACHE": "1"
+  },
+  "baseline_env": {
+   "MTP": "false",
+   "C35_GQA_ATTN": "1",
+   "CACHE": "1"
+  },
+  "identity_env_override": {
+   "CACHE": "0"
+  },
+  "url": "http://127.0.0.1:8000",
+  "model": "coder-q6",
+  "mtp": "on",
+  "spec": "lightning-mtp",
+  "quality_profile": "numeric"
+ },
+ "speed": {
+  "2048/default": 82.44,
+  "2048/greedy": 86.0,
+  "4096/default": 79.43,
+  "4096/greedy": 83.32,
+  "16384/default": 74.65,
+  "16384/greedy": 73.42,
+  "32768/default": 67.99,
+  "32768/greedy": 65.99,
+  "40960/default": 65.02,
+  "40960/greedy": 62.94,
+  "65536/default": 57.35,
+  "65536/greedy": 59.47,
+  "131072/default": 44.57,
+  "131072/greedy": 45.85,
+  "constancy/131072/greedy": 42.02,
+  "stability/2048/default": 83.23,
+  "stability/2048/greedy": 86.38
+ },
+ "quality": "profile=numeric suite=quick ref=coder-q6 cand=coder-q6\n  coding     PASS  ref 47/57, cand 47/57 (delta +0; allowed drop 2); flips: HumanEval/120:pass->FAIL, Mbpp/301:fail->pass\n  reasoning  PASS  ref 28/30, cand 26/30 (delta -2; allowed drop 2); flips: 87:pass->FAIL, 527:pass->FAIL, 923:pass->FAIL, 1187:fail->pass\n  tools      PASS  ref 14/14, cand 14/14 (delta +0; allowed drop 1)\n  needle     PASS  ref 3/3, cand 3/3\n  identity   INFO  0/6 IDENTICAL -- bench_ctx2048_task0: DIVERGE at char 24; bench_ctx2048_task1: DIVERGE at char 96; bench_ctx2048_task2: DIVERGE at char 74; coding0: DIVERGE at char 176; coding1: DIVERGE at char 158; coding2: DIVERGE at char 303\nOVERALL: PASS",
+ "identity": "profile=lossless suite=quick ref=coder-q6 cand=coder-q6\n  coding     SKIP  missing in ref\n  reasoning  SKIP  missing in ref\n  tools      SKIP  missing in ref\n  needle     SKIP  missing in ref\n  identity   PASS  6/6 IDENTICAL\nOVERALL: PASS",
+ "thermal_start": "Nominal",
+ "swap_delta_mb": -208.19000000000005,
+ "thermal": "Nominal",
+ "identity_32k": "IDENTICAL",
+ "minutes": 16.80412865479787,
+ "extract_of": {
+  "file": "20261009-015457.json",
+  "sha256": "068eb15e43d6ab6c7153b1756261c0456d4dba4aa17d50fd504b6463497c577a",
+  "omitted_fields": [
+   "fail",
+   "verdict"
+  ]
+ }
+}

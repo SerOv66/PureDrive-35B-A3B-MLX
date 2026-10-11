@@ -1,0 +1,69 @@
+{
+ "ts": "20261009-035434",
+ "config": {
+  "name": "q6-omlx-mtp2-rowexact-c35-vocab32k-shared",
+  "variant": "Q6-oQ6e",
+  "runtime": "omlx-main-cc1fdc9+rowexact+c35gqa-v2+depth2+vocab32k+sharedrows",
+  "cmd": [
+   "configs/omlx_q6.sh"
+  ],
+  "env": {
+   "MTP": "true",
+   "OMLX_MTP_ROW_EXACT_FORCE": "1",
+   "C35_GQA_ATTN": "1",
+   "CACHE": "1",
+   "C35_SHARED_ROWS_MIN_TILES": "0",
+   "C35_DRAFT_VOCAB": "models/draft_vocab/vocab32k.json",
+   "OMLX_EXTRA": "\"mtp_fixed_depth\": 2"
+  },
+  "baseline_env": {
+   "MTP": "false",
+   "OMLX_MTP_ROW_EXACT_FORCE": "1",
+   "C35_GQA_ATTN": "1",
+   "CACHE": "1",
+   "C35_SHARED_ROWS_MIN_TILES": "0"
+  },
+  "identity_env_override": {
+   "CACHE": "0"
+  },
+  "url": "http://127.0.0.1:8000",
+  "model": "coder-q6",
+  "mtp": "on",
+  "spec": "lightning-mtp-depth2",
+  "quality_profile": "numeric"
+ },
+ "speed": {
+  "2048/default": 87.2,
+  "2048/greedy": 91.87,
+  "4096/default": 84.6,
+  "4096/greedy": 90.33,
+  "16384/default": 76.78,
+  "16384/greedy": 81.91,
+  "32768/default": 72.2,
+  "32768/greedy": 73.38,
+  "40960/default": 68.6,
+  "40960/greedy": 69.05,
+  "65536/default": 59.78,
+  "65536/greedy": 64.59,
+  "131072/default": 48.77,
+  "131072/greedy": 47.17,
+  "constancy/131072/greedy": 46.21,
+  "stability/2048/default": 86.51,
+  "stability/2048/greedy": 93.12
+ },
+ "quality": "profile=numeric suite=quick ref=coder-q6 cand=coder-q6\n  coding     PASS  ref 47/57, cand 48/57 (delta +1; allowed drop 2); flips: HumanEval/120:pass->FAIL, HumanEval/126:fail->pass, Mbpp/301:fail->pass\n  reasoning  PASS  ref 28/30, cand 26/30 (delta -2; allowed drop 2); flips: 87:pass->FAIL, 527:pass->FAIL, 923:pass->FAIL, 1187:fail->pass\n  tools      PASS  ref 14/14, cand 14/14 (delta +0; allowed drop 1)\n  needle     PASS  ref 3/3, cand 3/3\n  identity   INFO  0/6 IDENTICAL -- bench_ctx2048_task0: DIVERGE at char 24; bench_ctx2048_task1: DIVERGE at char 96; bench_ctx2048_task2: DIVERGE at char 74; coding0: DIVERGE at char 176; coding1: DIVERGE at char 158; coding2: DIVERGE at char 303\nOVERALL: PASS",
+ "identity": "profile=lossless suite=quick ref=coder-q6 cand=coder-q6\n  coding     SKIP  missing in ref\n  reasoning  SKIP  missing in ref\n  tools      SKIP  missing in ref\n  needle     SKIP  missing in ref\n  identity   PASS  6/6 IDENTICAL\nOVERALL: PASS",
+ "thermal_start": "Nominal",
+ "swap_delta_mb": -32.0,
+ "thermal": "Nominal",
+ "identity_32k": "IDENTICAL",
+ "minutes": 16.60810058116913,
+ "extract_of": {
+  "file": "20261009-035434.json",
+  "sha256": "73df899444dd9f00d9a5d95db38c5222c013eb983c437d37d0fb1dec4e020f4e",
+  "omitted_fields": [
+   "fail",
+   "verdict"
+  ]
+ }
+}

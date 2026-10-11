@@ -1,0 +1,12 @@
+
+harness x task: n, successes, median wall (s), median requests, median prompt/completion tokens (ptok/ctok), median prefix-hit, decode tok/s (weighted mean), median TTFT (s)
+hermes  t1_bugfix    n=3 ok=3/3 wall=  40.7 req=  6.0 ptok=   46510 ctok=  3339 hit=89% dec=120.1 ttft= 1.39
+hermes  t2_feature   n=3 ok=3/3 wall=  45.9 req= 10.0 ptok=   86436 ctok=  3502 hit=92% dec=108.8 ttft= 0.81
+hermes  t3_refactor  n=3 ok=3/3 wall=  39.9 req=  7.0 ptok=   57930 ctok=  2827 hit=85% dec=117.3 ttft= 2.11
+hermes  t4_debug     n=3 ok=3/3 wall=  47.7 req= 21.0 ptok=  232237 ctok=  3201 hit=95% dec=126.2 ttft= 1.24
+hermes  t5_long      n=2 ok=0/2 wall= 928.8 req= 49.5 ptok= 2126016 ctok= 34520 hit=93% dec= 88.3 ttft= 2.17
+pi      t1_bugfix    n=3 ok=3/3 wall=  15.4 req=  5.0 ptok=   18311 ctok=  1014 hit=83% dec=110.5 ttft= 1.02
+pi      t2_feature   n=3 ok=3/3 wall=  25.8 req=  6.0 ptok=   26257 ctok=  1863 hit=78% dec=104.4 ttft= 1.04
+pi      t3_refactor  n=3 ok=3/3 wall=  22.6 req= 15.0 ptok=   50244 ctok=  1563 hit=91% dec=112.0 ttft= 0.44
+pi      t4_debug     n=3 ok=3/3 wall=  15.5 req=  6.0 ptok=   24403 ctok=   930 hit=77% dec=116.1 ttft= 0.83
+pi      t5_long      n=2 ok=2/2 wall= 385.5 req= 39.5 ptok= 1482746 ctok= 13236 hit=94% dec= 88.5 ttft= 3.07

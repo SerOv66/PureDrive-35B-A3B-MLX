@@ -1,0 +1,4 @@
+The `lib/` folder contains copies of nine modules of the Python standard library (argparse, optparse, configparser, difflib, textwrap, shlex, glob, fnmatch, getopt). Do two things.
+1) The tests in `tests/` fail: find the bug in `lib/textwrap.py` and fix it, without touching the tests; verify with `python -m pytest -q`.
+2) Read each file in `lib/` in full with the reading tool (do not generate the document with scripts that parse the sources) and write `API.md`: one `## <module>` section per module, with a bulleted list of every public top-level function and class (name not starting with an underscore) and the first line of its docstring.
+When you are done, reply with a one-line summary.

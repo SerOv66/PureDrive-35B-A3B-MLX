@@ -1,0 +1,93 @@
+{
+ "ts": "20261009-224835",
+ "config": {
+  "name": "q6-omlx-mtp2-rowexact-c35v31brule-p2c-rps2-dtemp03-vocab32k-shared-flush2-mtpwin4k-fuseglue-blockverify-rps6u4-gdnrec8-dcompile-fastcommit-qkprep-predraft",
+  "variant": "Q6-oQ6e",
+  "runtime": "omlx-main-cc1fdc9+rowexact+c35gqa-v31-brule+p2c16+depth2+vocab32k+sharedrows+verifyflush2+mtpwindow4096+rps2+drafttemp0.3+fuseglue+blockverify+rps6u4+gdnrec8+dcompile+fastcommit+qkprep+predraft",
+  "cmd": [
+   "configs/omlx_q6.sh"
+  ],
+  "env": {
+   "MTP": "true",
+   "OMLX_MTP_ROW_EXACT_FORCE": "1",
+   "C35_GQA_ATTN": "1",
+   "CACHE": "1",
+   "C35_SHARED_ROWS_MIN_TILES": "0",
+   "C35_DRAFT_VOCAB": "models/draft_vocab/vocab32k.json",
+   "OMLX_EXTRA": "\"mtp_fixed_depth\": 2",
+   "C35_VERIFY_FLUSH": "2",
+   "C35_GQA_VERSION": "31",
+   "C35_MTP_WINDOW": "4096",
+   "C35_GQA_P2": "3",
+   "C35_RPS": "2",
+   "C35_DRAFT_TEMP": "0.3",
+   "C35_FUSE_GLUE": "1",
+   "C35_BLOCK_VERIFY": "1",
+   "C35_RPS6U": "4",
+   "C35_GDN_REC_ROWS": "8",
+   "C35_GQA_BRULE": "1",
+   "C35_FAST_COMMIT": "1",
+   "C35_QK_PREP": "1",
+   "C35_DRAFT_COMPILE": "1",
+   "C35_MTP_PREDRAFT": "1"
+  },
+  "baseline_env": {
+   "MTP": "false",
+   "OMLX_MTP_ROW_EXACT_FORCE": "1",
+   "C35_GQA_ATTN": "1",
+   "CACHE": "1",
+   "C35_SHARED_ROWS_MIN_TILES": "0",
+   "C35_GQA_VERSION": "31",
+   "C35_GQA_P2": "3",
+   "C35_RPS": "2",
+   "C35_FUSE_GLUE": "1",
+   "C35_RPS6U": "4",
+   "C35_GDN_REC_ROWS": "8",
+   "C35_GQA_BRULE": "1",
+   "C35_FAST_COMMIT": "1",
+   "C35_QK_PREP": "1"
+  },
+  "identity_env_override": {
+   "CACHE": "0"
+  },
+  "url": "http://127.0.0.1:8000",
+  "model": "coder-q6",
+  "mtp": "on",
+  "spec": "lightning-mtp-depth2",
+  "quality_profile": "numeric"
+ },
+ "speed": {
+  "2048/default": 110.65,
+  "2048/greedy": 109.22,
+  "4096/default": 106.16,
+  "4096/greedy": 105.87,
+  "16384/default": 98.47,
+  "16384/greedy": 99.13,
+  "32768/default": 89.29,
+  "32768/greedy": 90.65,
+  "40960/default": 82.02,
+  "40960/greedy": 88.8,
+  "65536/default": 76.28,
+  "65536/greedy": 81.67,
+  "131072/default": 63.47,
+  "131072/greedy": 60.57,
+  "constancy/131072/greedy": 58.29,
+  "stability/2048/default": 110.94,
+  "stability/2048/greedy": 109.57
+ },
+ "quality": "profile=numeric suite=quick ref=coder-q6 cand=coder-q6\n  coding     PASS  ref 47/57, cand 48/57 (delta +1; allowed drop 2); flips: HumanEval/120:pass->FAIL, Mbpp/86:fail->pass, Mbpp/301:fail->pass\n  reasoning  PASS  ref 28/30, cand 28/30 (delta +0; allowed drop 2); flips: 923:pass->FAIL, 1187:fail->pass\n  tools      PASS  ref 14/14, cand 14/14 (delta +0; allowed drop 1)\n  needle     PASS  ref 3/3, cand 3/3\n  identity   INFO  0/6 IDENTICAL -- bench_ctx2048_task0: DIVERGE at char 24; bench_ctx2048_task1: DIVERGE at char 45; bench_ctx2048_task2: DIVERGE at char 74; coding0: DIVERGE at char 520; coding1: DIVERGE at char 158; coding2: DIVERGE at char 303\nOVERALL: PASS",
+ "identity": "profile=lossless suite=quick ref=coder-q6 cand=coder-q6\n  coding     SKIP  missing in ref\n  reasoning  SKIP  missing in ref\n  tools      SKIP  missing in ref\n  needle     SKIP  missing in ref\n  identity   PASS  6/6 IDENTICAL\nOVERALL: PASS",
+ "thermal_start": "Nominal",
+ "swap_delta_mb": 756.75,
+ "thermal": "Nominal",
+ "identity_32k": "IDENTICAL",
+ "minutes": 16.36592511733373,
+ "extract_of": {
+  "file": "20261009-224835.json",
+  "sha256": "9652edd005eae6d8314c35d96d43476aa5a97c169d05e0e2e342f4954caafe5c",
+  "omitted_fields": [
+   "fail",
+   "verdict"
+  ]
+ }
+}

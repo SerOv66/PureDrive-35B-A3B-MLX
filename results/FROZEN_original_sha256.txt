@@ -1,0 +1,18 @@
+# sha256 of the ORIGINAL frozen files used for every measurement in this repository (before sanitization for publication).
+# The published copies differ textually (absolute paths removed, messages/comments in English, server epoch timestamps removed from stored reports, the
+# optional speed threshold and two configurable lines in verify_target.py), so their hashes do not match these; logic is unchanged.
+ee66645ca67776bd5d568ebabce6d9e1a4ec0b88498fc99d3f4c3e29afa27653  bench/verify_target.py
+dca9061ab6dbecaed49ca17d244068ab1f4161c99cdc12646c99853aca371d82  bench/bench_http.py
+f955a624e8a28e2a27439d9ae3fce54212c45594eaa69fec78c92b3e246a306a  bench/prompts.py
+bbb8cfe27b733248866ce3df129f9d06dcb5c1f6331204d0c2688ee0faeab6a5  bench/corpus/corpus.txt
+7117bdb0dc95b29b569f46bea9b3deb92685bd9563723ca2f84c88907de4d65e  bench/corpus/tasks.json
+193505206eed7d36cfab7606566438634a290c4671cbc7d279cd3fd5344aeb38  quality/run_quality.py
+341cc907d079c86f247eabca1d54a96356125e94011ac6c6aeaf2d14ed36e11d  quality/compare.py
+f966960cd0970ba77d09ad8ff7eaff3dc54b61a13a0c0cc9566b5b2b15e12d9b  quality/THRESHOLDS.md
+73a3eab71dd7dbfb7dca07b98b4c00f25a8439efdb377882b3e4686fa5db5d2e  quality/reference/Q6-oQ6e_quick.json
+3730d312f6e3440559ace48831e51066acaca737f6eabec99bccb9e4b3c39d14  quality/data/gsm8k_test.jsonl
+272720b90ac375502c8ed23cd791c2a93dfb22a911641a494da74a426c09f101  quality/data/HumanEvalPlus.jsonl.gz
+af43697e8791c4c149bdfd6b489d8b5412507551ac20e28a439f650b8225db63  quality/data/MbppPlus.jsonl.gz
+# certified artifacts
+9d916294656a670d  patches/omlx_c35_EXP110.patch  (prefix; sha256 of the whole file starts with these 16 hex digits)
+e61d6d11ad7e9b4c  kernels/gqa_attn.py  (prefix)

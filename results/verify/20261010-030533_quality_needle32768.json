@@ -1,0 +1,78 @@
+{
+ "schema": 1,
+ "created": "2026-10-10T03:17:53",
+ "suite": "quick",
+ "url": "http://127.0.0.1:8000",
+ "model": "coder-q6",
+ "harness": {
+  "script": "quality/run_quality.py",
+  "sha256": "193505206eed7d36cfab7606566438634a290c4671cbc7d279cd3fd5344aeb38",
+  "thresholds_sha256": "f966960cd0970ba77d09ad8ff7eaff3dc54b61a13a0c0cc9566b5b2b15e12d9b",
+  "git_commit": null,
+  "python": "3.12.13",
+  "platform": "macOS-27.0.1-arm64-arm-64bit"
+ },
+ "datasets": {
+  "HumanEvalPlus.jsonl.gz": "272720b90ac375502c8ed23cd791c2a93dfb22a911641a494da74a426c09f101",
+  "MbppPlus.jsonl.gz": "af43697e8791c4c149bdfd6b489d8b5412507551ac20e28a439f650b8225db63",
+  "gsm8k_test.jsonl": "3730d312f6e3440559ace48831e51066acaca737f6eabec99bccb9e4b3c39d14"
+ },
+ "sampling": {
+  "temperature": 0,
+  "top_p": 1.0,
+  "top_k": 1,
+  "seed": 1234,
+  "thinking": "off (coding/reasoning/tools)"
+ },
+ "server": {
+  "/v1/models": {
+   "object": "list",
+   "data": [
+    {
+     "id": "coder-q6",
+     "object": "model",
+     "owned_by": "omlx",
+     "max_model_len": 262144
+    }
+   ]
+  },
+  "/props": "unavailable: RuntimeError",
+  "/health": {
+   "status": "healthy",
+   "default_model": "coder-q6",
+   "engine_pool": {
+    "model_count": 1,
+    "loaded_count": 1,
+    "final_ceiling": 0,
+    "current_model_memory": 31719620707
+   },
+   "mcp": null
+  }
+ },
+ "parts": {
+  "needle": {
+   "score": 1.0,
+   "passed": 1,
+   "n": 1,
+   "items": [
+    {
+     "ctx": 32768,
+     "depth": 0.5,
+     "passed": true,
+     "value": "WQDU-9335-NCMH",
+     "answer": "WQDU-9335-NCMH",
+     "prompt_tokens_local": 32768,
+     "prompt_tokens_retok": 32767,
+     "prompt_tokens_server": 32767,
+     "seconds": 4.72,
+     "finish": "stop"
+    }
+   ],
+   "seconds": 5.7
+  }
+ },
+ "timings": {
+  "needle": 5.7
+ },
+ "total_seconds": 5.7
+}

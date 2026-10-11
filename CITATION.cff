@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "PureDrive-35B-A3B-MLX: exact fast decoding of a 35B-A3B mixture-of-experts coder model on Apple M4 Pro (MTP speculation and a custom Metal attention kernel)"
+type: software
+authors:
+  - name: "SerOv66"
+repository-code: "https://github.com/SerOv66/PureDrive-35B-A3B-MLX"
+license: Apache-2.0
+keywords:
+  - MLX
+  - Apple silicon
+  - speculative decoding
+  - multi-token prediction
+  - mixture of experts
+  - Metal
+  - LLM inference

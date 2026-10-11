@@ -1,0 +1,1580 @@
+{
+ "schema": 1,
+ "created": "2026-10-10T03:18:33",
+ "suite": "quick",
+ "url": "http://127.0.0.1:8000",
+ "model": "coder-q6",
+ "harness": {
+  "script": "quality/run_quality.py",
+  "sha256": "193505206eed7d36cfab7606566438634a290c4671cbc7d279cd3fd5344aeb38",
+  "thresholds_sha256": "f966960cd0970ba77d09ad8ff7eaff3dc54b61a13a0c0cc9566b5b2b15e12d9b",
+  "git_commit": null,
+  "python": "3.12.13",
+  "platform": "macOS-27.0.1-arm64-arm-64bit"
+ },
+ "datasets": {
+  "HumanEvalPlus.jsonl.gz": "272720b90ac375502c8ed23cd791c2a93dfb22a911641a494da74a426c09f101",
+  "MbppPlus.jsonl.gz": "af43697e8791c4c149bdfd6b489d8b5412507551ac20e28a439f650b8225db63",
+  "gsm8k_test.jsonl": "3730d312f6e3440559ace48831e51066acaca737f6eabec99bccb9e4b3c39d14"
+ },
+ "sampling": {
+  "temperature": 0,
+  "top_p": 1.0,
+  "top_k": 1,
+  "seed": 1234,
+  "thinking": "off (coding/reasoning/tools)"
+ },
+ "server": {
+  "/v1/models": {
+   "object": "list",
+   "data": [
+    {
+     "id": "coder-q6",
+     "object": "model",
+     "owned_by": "omlx",
+     "max_model_len": 262144
+    }
+   ]
+  },
+  "/props": "unavailable: RuntimeError",
+  "/health": "unavailable: RuntimeError"
+ },
+ "parts": {
+  "coding": {
+   "score": 0.8421052631578947,
+   "passed": 48,
+   "n": 57,
+   "by_dataset": {
+    "humaneval_plus": {
+     "n": 28,
+     "passed": 25,
+     "base_passed": 25
+    },
+    "mbpp_plus": {
+     "n": 29,
+     "passed": 23,
+     "base_passed": 26
+    }
+   },
+   "items": [
+    {
+     "task_id": "HumanEval/0",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 182,
+     "finish": "stop",
+     "gen_seconds": 1.72,
+     "check_seconds": 0.06,
+     "response": "```python\nfrom typing import List\n\n\ndef has_close_elements(numbers: List[float], threshold: float) -> bool:\n    \"\"\" Check if in given list of numbers, are any two numbers closer to each other than\n    given threshold.\n    >>> has_close_elements([1.0, 2.0, 3.0], 0.5)\n    False\n    >>> has_close_elements([1.0, 2.8, 3.0, 4.0, 5.0, 2.0], 0.3)\n    True\n    \"\"\"\n    for index, elem in enumerate(numbers):\n        for index2, elem2 in enumerate(numbers):\n            if index != index2:\n                distance = abs(elem - elem2)\n                if distance < threshold:\n                    return True\n    return False\n```"
+    },
+    {
+     "task_id": "HumanEval/6",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 199,
+     "finish": "stop",
+     "gen_seconds": 1.68,
+     "check_seconds": 0.06,
+     "response": "```python\nfrom typing import List\n\n\ndef parse_nested_parens(paren_string: str) -> List[int]:\n    \"\"\" Input to this function is a string represented multiple groups for nested parentheses separated by spaces.\n    For each of the group, output the deepest level of nesting of parentheses.\n    E.g. (()()) has maximum two levels of nesting while ((())) has three.\n\n    >>> parse_nested_parens('(()()) ((())) () ((())()())')\n    [2, 3, 1, 3]\n    \"\"\"\n    result = []\n    for group in paren_string.split():\n        depth = 0\n        max_depth = 0\n        for char in group:\n            if char == '(':\n                depth += 1\n                max_depth = max(max_depth, depth)\n            elif char == ')':\n                depth -= 1\n        result.append(max_depth)\n    return result\n```"
+    },
+    {
+     "task_id": "HumanEval/12",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 127,
+     "finish": "stop",
+     "gen_seconds": 1.28,
+     "check_seconds": 0.05,
+     "response": "```python\nfrom typing import List, Optional\n\n\ndef longest(strings: List[str]) -> Optional[str]:\n    \"\"\" Out of list of strings, return the longest one. Return the first one in case of multiple\n    strings of the same length. Return None in case the input list is empty.\n    >>> longest([])\n\n    >>> longest(['a', 'b', 'c'])\n    'a'\n    >>> longest(['a', 'bb', 'ccc'])\n    'ccc'\n    \"\"\"\n    if not strings:\n        return None\n    return max(strings, key=len)\n```"
+    },
+    {
+     "task_id": "HumanEval/18",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 160,
+     "finish": "stop",
+     "gen_seconds": 1.56,
+     "check_seconds": 0.06,
+     "response": "```python\ndef how_many_times(string: str, substring: str) -> int:\n    \"\"\" Find how many times a given substring can be found in the original string. Count overlaping cases.\n    >>> how_many_times('', 'a')\n    0\n    >>> how_many_times('aaa', 'a')\n    3\n    >>> how_many_times('aaaa', 'aa')\n    3\n    \"\"\"\n    if not substring:\n        return 0\n    count = 0\n    start = 0\n    while True:\n        pos = string.find(substring, start)\n        if pos == -1:\n            break\n        count += 1\n        start = pos + 1\n    return count\n```"
+    },
+    {
+     "task_id": "HumanEval/24",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 85,
+     "finish": "stop",
+     "gen_seconds": 0.99,
+     "check_seconds": 0.43,
+     "response": "```python\ndef largest_divisor(n: int) -> int:\n    \"\"\" For a given number n, find the largest number that divides n evenly, smaller than n\n    >>> largest_divisor(15)\n    5\n    \"\"\"\n    for i in range(n - 1, 0, -1):\n        if n % i == 0:\n            return i\n```"
+    },
+    {
+     "task_id": "HumanEval/30",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 138,
+     "finish": "stop",
+     "gen_seconds": 1.32,
+     "check_seconds": 0.06,
+     "response": "```python\ndef get_positive(l: list):\n    \"\"\"Return only positive numbers in the list.\n    >>> get_positive([-1, 2, -4, 5, 6])\n    [2, 5, 6]\n    >>> get_positive([5, 3, -5, 2, -3, 3, 9, 0, 123, 1, -10])\n    [5, 3, 2, 3, 9, 123, 1]\n    \"\"\"\n    return [x for x in l if x > 0]\n```"
+    },
+    {
+     "task_id": "HumanEval/36",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 124,
+     "finish": "stop",
+     "gen_seconds": 1.28,
+     "check_seconds": 1.01,
+     "response": "```python\ndef fizz_buzz(n: int):\n    \"\"\"Return the number of times the digit 7 appears in integers less than n which are divisible by 11 or 13.\n    >>> fizz_buzz(50)\n    0\n    >>> fizz_buzz(78)\n    2\n    >>> fizz_buzz(79)\n    3\n    \"\"\"\n    return sum(str(i).count('7') for i in range(n) if i % 11 == 0 or i % 13 == 0)\n```"
+    },
+    {
+     "task_id": "HumanEval/42",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 131,
+     "finish": "stop",
+     "gen_seconds": 1.23,
+     "check_seconds": 0.06,
+     "response": "```python\ndef incr_list(l: list):\n    \"\"\"Return list with elements incremented by 1.\n    >>> incr_list([1, 2, 3])\n    [2, 3, 4]\n    >>> incr_list([5, 3, 5, 2, 3, 3, 9, 0, 123])\n    [6, 4, 6, 3, 4, 4, 10, 1, 124]\n    \"\"\"\n    return [x + 1 for x in l]\n```"
+    },
+    {
+     "task_id": "HumanEval/48",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 86,
+     "finish": "stop",
+     "gen_seconds": 1.03,
+     "check_seconds": 0.06,
+     "response": "```python\ndef is_palindrome(text: str):\n    \"\"\"\n    Checks if given string is a palindrome\n    >>> is_palindrome('')\n    True\n    >>> is_palindrome('aba')\n    True\n    >>> is_palindrome('aaaaa')\n    True\n    >>> is_palindrome('zbcd')\n    False\n    \"\"\"\n    return text == text[::-1]\n```"
+    },
+    {
+     "task_id": "HumanEval/54",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 160,
+     "finish": "stop",
+     "gen_seconds": 1.42,
+     "check_seconds": 0.06,
+     "response": "```python\ndef same_chars(s0: str, s1: str):\n    \"\"\"\n    Check if two words have the same characters.\n    >>> same_chars('eabcdzzzz', 'dddzzzzzzzddeddabc')\n    True\n    >>> same_chars('abcd', 'dddddddabc')\n    True\n    >>> same_chars('dddddddabc', 'abcd')\n    True\n    >>> same_chars('eabcd', 'dddddddabc')\n    False\n    >>> same_chars('abcd', 'dddddddabce')\n    False\n    >>> same_chars('eabcdzzzz', 'dddzzzzzzzddddabc')\n    False\n    \"\"\"\n    return set(s0) == set(s1)\n```"
+    },
+    {
+     "task_id": "HumanEval/60",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 124,
+     "finish": "stop",
+     "gen_seconds": 1.24,
+     "check_seconds": 0.06,
+     "response": "```python\ndef sum_to_n(n: int):\n    \"\"\"sum_to_n is a function that sums numbers from 1 to n.\n    >>> sum_to_n(30)\n    465\n    >>> sum_to_n(100)\n    5050\n    >>> sum_to_n(5)\n    15\n    >>> sum_to_n(10)\n    55\n    >>> sum_to_n(1)\n    1\n    \"\"\"\n    return n * (n + 1) // 2\n```"
+    },
+    {
+     "task_id": "HumanEval/66",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 139,
+     "finish": "stop",
+     "gen_seconds": 1.33,
+     "check_seconds": 0.06,
+     "response": "```python\ndef digitSum(s):\n    \"\"\"Task\n    Write a function that takes a string as input and returns the sum of the upper characters only'\n    ASCII codes.\n\n    Examples:\n        digitSum(\"\") => 0\n        digitSum(\"abAB\") => 131\n        digitSum(\"abcCd\") => 67\n        digitSum(\"helloE\") => 69\n        digitSum(\"woArBld\") => 131\n        digitSum(\"aAaaaXa\") => 153\n    \"\"\"\n    return sum(ord(c) for c in s if c.isupper())\n```"
+    },
+    {
+     "task_id": "HumanEval/72",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 253,
+     "finish": "stop",
+     "gen_seconds": 2.02,
+     "check_seconds": 0.06,
+     "response": "```python\ndef will_it_fly(q,w):\n    '''\n    Write a function that returns True if the object q will fly, and False otherwise.\n    The object q will fly if it's balanced (it is a palindromic list) and the sum of its elements is less than or equal the maximum possible weight w.\n\n    Example:\n    will_it_fly([1, 2], 5) \u279e False \n    # 1+2 is less than the maximum possible weight, but it's unbalanced.\n\n    will_it_fly([3, 2, 3], 1) \u279e False\n    # it's balanced, but 3+2+3 is more than the maximum possible weight.\n\n    will_it_fly([3, 2, 3], 9) \u279e True\n    # 3+2+3 is less than the maximum possible weight, and it's balanced.\n\n    will_it_fly([3], 5) \u279e True\n    # 3 is less than the maximum possible weight, and it's balanced.\n    '''\n    return q == q[::-1] and sum(q) <= w\n```"
+    },
+    {
+     "task_id": "HumanEval/78",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 37,
+     "finish": "stop",
+     "gen_seconds": 0.95,
+     "check_seconds": 0.06,
+     "response": "```python\ndef hex_key(num):\n    primes = set(\"2357BD\")\n    return sum(1 for c in num if c in primes)\n```"
+    },
+    {
+     "task_id": "HumanEval/84",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 171,
+     "finish": "stop",
+     "gen_seconds": 1.54,
+     "check_seconds": 0.05,
+     "response": "```python\ndef solve(N):\n    \"\"\"Given a positive integer N, return the total sum of its digits in binary.\n    \n    Example\n        For N = 1000, the sum of digits will be 1 the output should be \"1\".\n        For N = 150, the sum of digits will be 6 the output should be \"110\".\n        For N = 147, the sum of digits will be 12 the output should be \"1100\".\n    \n    Variables:\n        @N integer\n             Constraints: 0 \u2264 N \u2264 10000.\n    Output:\n         a string of binary number\n    \"\"\"\n    return bin(sum(int(d) for d in str(N)))[2:]\n```"
+    },
+    {
+     "task_id": "HumanEval/90",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 45,
+     "finish": "stop",
+     "gen_seconds": 0.92,
+     "check_seconds": 0.06,
+     "response": "```python\ndef next_smallest(lst):\n    unique = set(lst)\n    if len(unique) < 2:\n        return None\n    unique.remove(min(unique))\n    return min(unique)\n```"
+    },
+    {
+     "task_id": "HumanEval/96",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 254,
+     "finish": "stop",
+     "gen_seconds": 2.11,
+     "check_seconds": 0.12,
+     "response": "```python\ndef count_up_to(n):\n    \"\"\"Implement a function that takes an non-negative integer and returns an array of the first n\n    integers that are prime numbers and less than n.\n    for example:\n    count_up_to(5) => [2,3]\n    count_up_to(11) => [2,3,5,7]\n    count_up_to(0) => []\n    count_up_to(20) => [2,3,5,7,11,13,17,19]\n    count_up_to(1) => []\n    count_up_to(18) => [2,3,5,7,11,13,17]\n    \"\"\"\n    primes = []\n    candidate = 2\n    while len(primes) < n and candidate < n:\n        is_prime = True\n        for p in primes:\n            if p * p > candidate:\n                break\n            if candidate % p == 0:\n                is_prime = False\n                break\n        if is_prime:\n            primes.append(candidate)\n        candidate += 1\n    return primes\n```"
+    },
+    {
+     "task_id": "HumanEval/102",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 149,
+     "finish": "stop",
+     "gen_seconds": 1.39,
+     "check_seconds": 0.06,
+     "response": "```python\ndef choose_num(x, y):\n    \"\"\"This function takes two positive numbers x and y and returns the\n    biggest even integer number that is in the range [x, y] inclusive. If \n    there's no such number, then the function should return -1.\n\n    For example:\n    choose_num(12, 15) = 14\n    choose_num(13, 12) = -1\n    \"\"\"\n    if x > y:\n        return -1\n    for num in range(y, x - 1, -1):\n        if num % 2 == 0:\n            return num\n    return -1\n```"
+    },
+    {
+     "task_id": "HumanEval/108",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 206,
+     "finish": "stop",
+     "gen_seconds": 1.77,
+     "check_seconds": 0.06,
+     "response": "```python\ndef count_nums(arr):\n    \"\"\"\n    Write a function count_nums which takes an array of integers and returns\n    the number of elements which has a sum of digits > 0.\n    If a number is negative, then its first signed digit will be negative:\n    e.g. -123 has signed digits -1, 2, and 3.\n    >>> count_nums([]) == 0\n    >>> count_nums([-1, 11, -11]) == 1\n    >>> count_nums([1, 1, 2]) == 3\n    \"\"\"\n    count = 0\n    for num in arr:\n        s = str(abs(num))\n        digits = [int(c) for c in s]\n        if num < 0:\n            digits[0] = -digits[0]\n        if sum(digits) > 0:\n            count += 1\n    return count\n```"
+    },
+    {
+     "task_id": "HumanEval/114",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 143,
+     "finish": "stop",
+     "gen_seconds": 1.42,
+     "check_seconds": 0.06,
+     "response": "```python\ndef minSubArraySum(nums):\n    \"\"\"\n    Given an array of integers nums, find the minimum sum of any non-empty sub-array\n    of nums.\n    Example\n    minSubArraySum([2, 3, 4, 1, 2, 4]) == 1\n    minSubArraySum([-1, -2, -3]) == -6\n    \"\"\"\n    min_sum = float('inf')\n    current_sum = 0\n    for num in nums:\n        current_sum = min(num, current_sum + num)\n        min_sum = min(min_sum, current_sum)\n    return min_sum\n```"
+    },
+    {
+     "task_id": "HumanEval/120",
+     "dataset": "humaneval",
+     "passed": false,
+     "base_pass": false,
+     "plus_pass": false,
+     "status": "ok",
+     "msg": "AssertionError()",
+     "completion_tokens": 36,
+     "finish": "stop",
+     "gen_seconds": 0.89,
+     "check_seconds": 0.06,
+     "response": "```python\nfrom typing import List\n\n\ndef maximum(arr: List[int], k: int) -> List[int]:\n    return sorted(arr, reverse=True)[:k]\n```"
+    },
+    {
+     "task_id": "HumanEval/126",
+     "dataset": "humaneval",
+     "passed": false,
+     "base_pass": false,
+     "plus_pass": false,
+     "status": "ok",
+     "msg": "AssertionError()",
+     "completion_tokens": 312,
+     "finish": "stop",
+     "gen_seconds": 2.52,
+     "check_seconds": 0.06,
+     "response": "```python\ndef is_sorted(lst):\n    '''\n    Given a list of numbers, return whether or not they are sorted\n    in ascending order. If list has more than 1 duplicate of the same\n    number, return False. Assume no negative numbers and only integers.\n\n    Examples\n    is_sorted([5]) \u279e True\n    is_sorted([1, 2, 3, 4, 5]) \u279e True\n    is_sorted([1, 3, 2, 4, 5]) \u279e False\n    is_sorted([1, 2, 3, 4, 5, 6]) \u279e True\n    is_sorted([1, 2, 3, 4, 5, 6, 7]) \u279e True\n    is_sorted([1, 3, 2, 4, 5, 6, 7]) \u279e False\n    is_sorted([1, 2, 2, 3, 3, 4]) \u279e True\n    is_sorted([1, 2, 2, 2, 3, 4]) \u279e False\n    '''\n    for i in range(len(lst) - 1):\n        if lst[i] > lst[i + 1]:\n            return False\n        if lst[i] == lst[i + 1] and lst.count(lst[i]) > 1:\n            return False\n    return True\n```"
+    },
+    {
+     "task_id": "HumanEval/132",
+     "dataset": "humaneval",
+     "passed": false,
+     "base_pass": false,
+     "plus_pass": false,
+     "status": "ok",
+     "msg": "AssertionError()",
+     "completion_tokens": 92,
+     "finish": "stop",
+     "gen_seconds": 1.17,
+     "check_seconds": 0.06,
+     "response": "```python\ndef is_nested(string):\n    depth = 0\n    max_depth = 0\n    for char in string:\n        if char == '[':\n            depth += 1\n            max_depth = max(max_depth, depth)\n        elif char == ']':\n            if depth == 0:\n                return False\n            depth -= 1\n    return max_depth >= 2 and depth == 0\n```"
+    },
+    {
+     "task_id": "HumanEval/138",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 92,
+     "finish": "stop",
+     "gen_seconds": 1.04,
+     "check_seconds": 0.06,
+     "response": "```python\ndef is_equal_to_sum_even(n):\n    \"\"\"Evaluate whether the given number n can be written as the sum of exactly 4 positive even numbers\n    Example\n    is_equal_to_sum_even(4) == False\n    is_equal_to_sum_even(6) == False\n    is_equal_to_sum_even(8) == True\n    \"\"\"\n    return n >= 8 and n % 2 == 0\n```"
+    },
+    {
+     "task_id": "HumanEval/144",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 68,
+     "finish": "stop",
+     "gen_seconds": 1.07,
+     "check_seconds": 0.06,
+     "response": "```python\ndef simplify(x, n):\n    x_num, x_den = map(int, x.split('/'))\n    n_num, n_den = map(int, n.split('/'))\n    product = x_num * n_num\n    denominator = x_den * n_den\n    return product % denominator == 0\n```"
+    },
+    {
+     "task_id": "HumanEval/150",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 143,
+     "finish": "stop",
+     "gen_seconds": 1.39,
+     "check_seconds": 0.06,
+     "response": "```python\ndef x_or_y(n, x, y):\n    \"\"\"A simple program which should return the value of x if n is \n    a prime number and should return the value of y otherwise.\n\n    Examples:\n    for x_or_y(7, 34, 12) == 34\n    for x_or_y(15, 8, 5) == 5\n    \n    \"\"\"\n    if n < 2:\n        return y\n    for i in range(2, int(n ** 0.5) + 1):\n        if n % i == 0:\n            return y\n    return x\n```"
+    },
+    {
+     "task_id": "HumanEval/156",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 261,
+     "finish": "stop",
+     "gen_seconds": 2.23,
+     "check_seconds": 0.06,
+     "response": "```python\ndef int_to_mini_roman(number):\n    \"\"\"\n    Given a positive integer, obtain its roman numeral equivalent as a string,\n    and return it in lowercase.\n    Restrictions: 1 <= num <= 1000\n\n    Examples:\n    >>> int_to_mini_roman(19) == 'xix'\n    >>> int_to_mini_roman(152) == 'clii'\n    >>> int_to_mini_roman(426) == 'cdxxvi'\n    \"\"\"\n    val_map = [\n        (1000, 'm'), (900, 'cm'), (500, 'd'), (400, 'cd'),\n        (100, 'c'), (90, 'xc'), (50, 'l'), (40, 'xl'),\n        (10, 'x'), (9, 'ix'), (5, 'v'), (4, 'iv'), (1, 'i')\n    ]\n    result = ''\n    for val, sym in val_map:\n        while number >= val:\n            result += sym\n            number -= val\n    return result.lower()\n```"
+    },
+    {
+     "task_id": "HumanEval/162",
+     "dataset": "humaneval",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 115,
+     "finish": "stop",
+     "gen_seconds": 1.2,
+     "check_seconds": 0.06,
+     "response": "```python\nimport hashlib\n\ndef string_to_md5(text):\n    \"\"\"\n    Given a string 'text', return its md5 hash equivalent string.\n    If 'text' is an empty string, return None.\n\n    >>> string_to_md5('Hello world') == '3e25960a79dbc69b674cd4ec67a72c62'\n    \"\"\"\n    if text == '':\n        return None\n    return hashlib.md5(text.encode()).hexdigest()\n```"
+    },
+    {
+     "task_id": "Mbpp/2",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 30,
+     "finish": "stop",
+     "gen_seconds": 0.71,
+     "check_seconds": 0.06,
+     "response": "```python\ndef similar_elements(test_t1, test_t2):\n    return set(test_t1) & set(test_t2)\n```"
+    },
+    {
+     "task_id": "Mbpp/19",
+     "dataset": "mbpp",
+     "passed": false,
+     "base_pass": false,
+     "plus_pass": false,
+     "status": "ok",
+     "msg": "AssertionError()",
+     "completion_tokens": 21,
+     "finish": "stop",
+     "gen_seconds": 0.58,
+     "check_seconds": 0.06,
+     "response": "```python\ndef test_duplicate(nums):\n    return len(nums) == len(set(nums))\n```"
+    },
+    {
+     "task_id": "Mbpp/68",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 67,
+     "finish": "stop",
+     "gen_seconds": 0.95,
+     "check_seconds": 0.06,
+     "response": "```python\ndef is_Monotonic(nums):\n    return all(nums[i] <= nums[i + 1] for i in range(len(nums) - 1)) or all(\n        nums[i] >= nums[i + 1] for i in range(len(nums) - 1)\n    )\n```"
+    },
+    {
+     "task_id": "Mbpp/86",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 40,
+     "finish": "stop",
+     "gen_seconds": 0.7,
+     "check_seconds": 0.06,
+     "response": "```python\ndef centered_hexagonal_number(n):\n    return 3 * (n - 1) ** 2 + 3 * (n - 1) + 1\n```"
+    },
+    {
+     "task_id": "Mbpp/99",
+     "dataset": "mbpp",
+     "passed": false,
+     "base_pass": true,
+     "plus_pass": false,
+     "status": "ok",
+     "msg": "AssertionError()",
+     "completion_tokens": 19,
+     "finish": "stop",
+     "gen_seconds": 0.56,
+     "check_seconds": 0.06,
+     "response": "```python\ndef decimal_to_binary(n):\n    return bin(n)[2:]\n```"
+    },
+    {
+     "task_id": "Mbpp/118",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 18,
+     "finish": "stop",
+     "gen_seconds": 0.55,
+     "check_seconds": 0.06,
+     "response": "```python\ndef string_to_list(s):\n    return s.split(\" \")\n```"
+    },
+    {
+     "task_id": "Mbpp/133",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 27,
+     "finish": "stop",
+     "gen_seconds": 0.65,
+     "check_seconds": 0.05,
+     "response": "```python\ndef sum_negativenum(numbers):\n    return sum(n for n in numbers if n < 0)\n```"
+    },
+    {
+     "task_id": "Mbpp/166",
+     "dataset": "mbpp",
+     "passed": false,
+     "base_pass": false,
+     "plus_pass": false,
+     "status": "ok",
+     "msg": "AssertionError()",
+     "completion_tokens": 40,
+     "finish": "stop",
+     "gen_seconds": 0.74,
+     "check_seconds": 0.05,
+     "response": "```python\nfrom itertools import combinations\n\n\ndef find_even_pair(nums):\n    return sum(a ^ b & 1 == 0 for a, b in combinations(nums, 2))\n```"
+    },
+    {
+     "task_id": "Mbpp/233",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 31,
+     "finish": "stop",
+     "gen_seconds": 0.72,
+     "check_seconds": 0.06,
+     "response": "```python\nimport math\n\ndef lateralsuface_cylinder(r, h):\n    return 2 * math.pi * r * h\n```"
+    },
+    {
+     "task_id": "Mbpp/252",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 22,
+     "finish": "stop",
+     "gen_seconds": 0.6,
+     "check_seconds": 0.06,
+     "response": "```python\nimport cmath\n\ndef convert(z):\n    return cmath.polar(z)\n```"
+    },
+    {
+     "task_id": "Mbpp/269",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 16,
+     "finish": "stop",
+     "gen_seconds": 0.58,
+     "check_seconds": 0.06,
+     "response": "```python\ndef ascii_value(char):\n    return ord(char)\n```"
+    },
+    {
+     "task_id": "Mbpp/283",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 42,
+     "finish": "stop",
+     "gen_seconds": 0.82,
+     "check_seconds": 0.06,
+     "response": "```python\ndef validate(num):\n    for d in set(str(abs(num))):\n        if str(abs(num)).count(d) > int(d):\n            return False\n    return True\n```"
+    },
+    {
+     "task_id": "Mbpp/301",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 52,
+     "finish": "stop",
+     "gen_seconds": 0.8,
+     "check_seconds": 0.06,
+     "response": "```python\ndef dict_depth(d):\n    if not isinstance(d, dict):\n        return 0\n    if not d:\n        return 1\n    return 1 + max(dict_depth(v) for v in d.values())\n```"
+    },
+    {
+     "task_id": "Mbpp/394",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 22,
+     "finish": "stop",
+     "gen_seconds": 0.57,
+     "check_seconds": 0.06,
+     "response": "```python\ndef check_distinct(t):\n    return len(set(t)) == len(t)\n```"
+    },
+    {
+     "task_id": "Mbpp/418",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 19,
+     "finish": "stop",
+     "gen_seconds": 0.56,
+     "check_seconds": 0.06,
+     "response": "```python\ndef Find_Max(lst):\n    return max(lst, key=len)\n```"
+    },
+    {
+     "task_id": "Mbpp/433",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 24,
+     "finish": "stop",
+     "gen_seconds": 0.61,
+     "check_seconds": 0.06,
+     "response": "```python\ndef check_greater(arr, num):\n    return all(num > x for x in arr)\n```"
+    },
+    {
+     "task_id": "Mbpp/453",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 58,
+     "finish": "stop",
+     "gen_seconds": 0.83,
+     "check_seconds": 0.53,
+     "response": "```python\ndef sumofFactors(n):\n    total = 0\n    for i in range(1, n + 1):\n        if n % i == 0 and i % 2 == 0:\n            total += i\n    return total\n```"
+    },
+    {
+     "task_id": "Mbpp/471",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 37,
+     "finish": "stop",
+     "gen_seconds": 0.68,
+     "check_seconds": 0.06,
+     "response": "```python\ndef find_remainder(arr, n):\n    product = 1\n    for num in arr:\n        product *= num\n    return product % n\n```"
+    },
+    {
+     "task_id": "Mbpp/558",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 41,
+     "finish": "stop",
+     "gen_seconds": 0.74,
+     "check_seconds": 0.06,
+     "response": "```python\ndef digit_distance_nums(num1, num2):\n    return sum(abs(int(a) - int(b)) for a, b in zip(str(num1), str(num2)))\n```"
+    },
+    {
+     "task_id": "Mbpp/576",
+     "dataset": "mbpp",
+     "passed": false,
+     "base_pass": true,
+     "plus_pass": false,
+     "status": "ok",
+     "msg": "AssertionError()",
+     "completion_tokens": 89,
+     "finish": "stop",
+     "gen_seconds": 1.12,
+     "check_seconds": 0.06,
+     "response": "```python\ndef is_Sub_Array(main_list, sub_list):\n    if not sub_list:\n        return True\n    if not main_list or len(sub_list) > len(main_list):\n        return False\n    for i in range(len(main_list) - len(sub_list) + 1):\n        if main_list[i:i + len(sub_list)] == sub_list:\n            return True\n    return False\n```"
+    },
+    {
+     "task_id": "Mbpp/591",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 33,
+     "finish": "stop",
+     "gen_seconds": 0.74,
+     "check_seconds": 0.05,
+     "response": "```python\ndef swap_List(lst):\n    lst[0], lst[-1] = lst[-1], lst[0]\n    return lst\n```"
+    },
+    {
+     "task_id": "Mbpp/606",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 21,
+     "finish": "stop",
+     "gen_seconds": 0.62,
+     "check_seconds": 0.06,
+     "response": "```python\nimport math\n\ndef radian_degree(deg):\n    return math.radians(deg)\n```"
+    },
+    {
+     "task_id": "Mbpp/623",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 24,
+     "finish": "stop",
+     "gen_seconds": 0.66,
+     "check_seconds": 0.06,
+     "response": "```python\ndef nth_nums(nums, n):\n    return [x ** n for x in nums]\n```"
+    },
+    {
+     "task_id": "Mbpp/641",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 27,
+     "finish": "stop",
+     "gen_seconds": 0.62,
+     "check_seconds": 0.06,
+     "response": "```python\ndef is_nonagonal(n):\n    return n * (7 * n - 5) // 2\n```"
+    },
+    {
+     "task_id": "Mbpp/732",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 28,
+     "finish": "stop",
+     "gen_seconds": 0.66,
+     "check_seconds": 0.06,
+     "response": "```python\nimport re\n\ndef replace_specialchar(s):\n    return re.sub(r'[ ,.]', ':', s)\n```"
+    },
+    {
+     "task_id": "Mbpp/748",
+     "dataset": "mbpp",
+     "passed": false,
+     "base_pass": true,
+     "plus_pass": false,
+     "status": "ok",
+     "msg": "AssertionError()",
+     "completion_tokens": 35,
+     "finish": "stop",
+     "gen_seconds": 0.69,
+     "check_seconds": 0.06,
+     "response": "```python\nimport re\n\ndef capital_words_spaces(s):\n    return re.sub(r'(?<!^)(?=[A-Z])', ' ', s)\n\n```"
+    },
+    {
+     "task_id": "Mbpp/763",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 43,
+     "finish": "stop",
+     "gen_seconds": 0.73,
+     "check_seconds": 0.06,
+     "response": "```python\ndef find_min_diff(arr, n):\n    arr = sorted(arr)\n    return min(arr[i + 1] - arr[i] for i in range(n - 1))\n```"
+    },
+    {
+     "task_id": "Mbpp/780",
+     "dataset": "mbpp",
+     "passed": false,
+     "base_pass": false,
+     "plus_pass": false,
+     "status": "ok",
+     "msg": "AssertionError()",
+     "completion_tokens": 40,
+     "finish": "stop",
+     "gen_seconds": 0.9,
+     "check_seconds": 0.06,
+     "response": "```python\nfrom itertools import combinations\n\ndef find_combinations(tuples):\n    return [tuple(sum(x) for x in combo) for combo in combinations(tuples, 2)]\n```"
+    },
+    {
+     "task_id": "Mbpp/796",
+     "dataset": "mbpp",
+     "passed": true,
+     "base_pass": true,
+     "plus_pass": true,
+     "status": "ok",
+     "msg": "",
+     "completion_tokens": 17,
+     "finish": "stop",
+     "gen_seconds": 0.55,
+     "check_seconds": 0.06,
+     "response": "```python\ndef return_sum(d):\n    return sum(d.values())\n```"
+    }
+   ],
+   "seconds": 60.1
+  },
+  "reasoning": {
+   "score": 0.9333333333333333,
+   "passed": 28,
+   "n": 30,
+   "items": [
+    {
+     "index": 0,
+     "gold": "18",
+     "pred": "18",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 53,
+     "finish": "stop",
+     "seconds": 0.91,
+     "response": "Janet lays 16 eggs/day. She uses 3 + 4 = 7, leaving 16 \u2212 7 = 9 to sell. At $2 each: 9 \u00d7 2 = $18.\n\n#### 18"
+    },
+    {
+     "index": 43,
+     "gold": "48",
+     "pred": "48",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 101,
+     "finish": "stop",
+     "seconds": 1.27,
+     "response": "Remaining calories: 2000 \u2212 1800 = 200 calories.\n\nCalories per gram: 300g \u00f7 5 servings = 60g per serving; 250 cal \u00f7 60g = 4.1667 cal/g.\n\nGrams for 200 calories: 200 \u00f7 4.1667 = 48g.\n\n#### 48"
+    },
+    {
+     "index": 87,
+     "gold": "9360",
+     "pred": "9360",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 129,
+     "finish": "stop",
+     "seconds": 1.42,
+     "response": "Sylvie's current monthly salary is $600, so her current annual salary is 600 \u00d7 12 = $7,200.\n\nThe 10% increase applies to the initial salary: 10% of $7,200 = $720 per year.\n\nAfter three more years, her salary increases by 3 \u00d7 $720 = $2,160.\n\nHer annual salary after three more years: $7,200 + $2,160 = $9,360.\n\n#### 9360"
+    },
+    {
+     "index": 131,
+     "gold": "940",
+     "pred": "940",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 41,
+     "finish": "stop",
+     "seconds": 0.7,
+     "response": "June expenditure: $500 \u2212 $60 = $440.\nTotal: $500 + $440 = $940.\n\n#### 940"
+    },
+    {
+     "index": 175,
+     "gold": "15",
+     "pred": "15",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 96,
+     "finish": "stop",
+     "seconds": 1.25,
+     "response": "Cost per gallon = $3 (lemons) + $2 (sugar) = $5.\nRevenue per gallon = 20 glasses \u00d7 $0.50 = $10.\nProfit per gallon = $10 \u2212 $5 = $5.\nGallons sold = $25 \u00f7 $5 = 5 gallons.\nSpent on lemons = 5 \u00d7 $3 = $15.\n\n#### 15"
+    },
+    {
+     "index": 219,
+     "gold": "54",
+     "pred": "54",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 68,
+     "finish": "stop",
+     "seconds": 0.98,
+     "response": "Naomi: 68\nYuri: 10 + 68/2 = 44\nBrianna: 68 + 17 = 85\nJojo: 251 - 68 - 44 - 85 = 54\n\n#### 54"
+    },
+    {
+     "index": 263,
+     "gold": "8",
+     "pred": "8",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 75,
+     "finish": "stop",
+     "seconds": 1.07,
+     "response": "Chris has 6 trees.\n\nFerdinand has half of Chris's: 6 \u00f7 2 = 3 trees.\n\nHarry has 5 more than twice Ferdinand's: 2(3) + 5 = 11 trees.\n\nDifference between Harry's and Ferdinand's: 11 \u2212 3 = 8.\n\n#### 8"
+    },
+    {
+     "index": 307,
+     "gold": "16",
+     "pred": "16",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 99,
+     "finish": "stop",
+     "seconds": 1.3,
+     "response": "Joey loses 8 pounds in 4 weeks, so he loses 8 \u00f7 4 = 2 pounds per week.\n\nSandy needs 4 weeks to lose what Joey loses in 1 week (2 pounds), so Sandy loses 2 \u00f7 4 = 0.5 pounds per week.\n\nTo lose 8 pounds at 0.5 pounds per week: 8 \u00f7 0.5 = 16 weeks.\n\n#### 16"
+    },
+    {
+     "index": 351,
+     "gold": "10",
+     "pred": "10",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 72,
+     "finish": "stop",
+     "seconds": 1.03,
+     "response": "Daisies need 30 pots. Roses need twice as many: 2 \u00d7 30 = 60 pots. Total needed: 30 + 60 = 90 pots. April bought 100, so leftover: 100 \u2212 90 = 10 pots.\n\n#### 10"
+    },
+    {
+     "index": 395,
+     "gold": "38",
+     "pred": "38",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 90,
+     "finish": "stop",
+     "seconds": 1.14,
+     "response": "Erica started with 20 cards. Her dad added 2 boxes \u00d7 15 = 30 cards, giving 20 + 30 = 50. She passed out 24 + 5 = 29, leaving 50 \u2212 29 = 21. She received 17 more, giving 21 + 17 = 38.\n\n#### 38"
+    },
+    {
+     "index": 439,
+     "gold": "17",
+     "pred": "17",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 89,
+     "finish": "stop",
+     "seconds": 1.25,
+     "response": "Wayne's drive takes 4 minutes. Bernadette's drive takes 4 \u00d7 4 = 16 minutes.\n\nTo arrive 5 minutes before Wayne, Bernadette must leave 16 \u2212 4 = 12 minutes earlier than Wayne (drive time difference), plus 5 minutes for the arrival gap.\n\nTotal: 12 + 5 = 17 minutes earlier.\n\n#### 17"
+    },
+    {
+     "index": 483,
+     "gold": "40",
+     "pred": "40",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 81,
+     "finish": "stop",
+     "seconds": 1.1,
+     "response": "Gabriel has 20 songs, so he can add 100 \u2212 20 = 80 more.\n\nLuri has 3 \u00d7 20 = 60 songs, so he can add 100 \u2212 60 = 40 more.\n\nThe difference is 80 \u2212 40 = 40.\n\n#### 40"
+    },
+    {
+     "index": 527,
+     "gold": "48",
+     "pred": "48",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 85,
+     "finish": "stop",
+     "seconds": 1.18,
+     "response": "One person paints \u00bd house in 5 days, so one person paints a whole house in 10 days.\n\nWork rate: 5 people each do 1 house/10 days, so combined rate = 5/10 = \u00bd house per day.\n\nTime for 1 house = 1 \u00f7 \u00bd = 2 days = 48 hours.\n\n#### 48"
+    },
+    {
+     "index": 571,
+     "gold": "308",
+     "pred": "308",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 62,
+     "finish": "stop",
+     "seconds": 0.91,
+     "response": "Spaying: $200\nVaccines: 3 \u00d7 $20 = $60\nVases: 4 \u00d7 $12 = $48\n\nTotal: $200 + $60 + $48 = $308\n\n#### 308"
+    },
+    {
+     "index": 615,
+     "gold": "33",
+     "pred": "33",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 119,
+     "finish": "stop",
+     "seconds": 1.33,
+     "response": "Aquarium: $10.00\nRocks: 2 \u00d7 $2.50 = $5.00\nCoral: 3 \u00d7 $2.00 = $6.00\nFish: 20 \u00d7 $0.50 = $10.00\nFish food: $2.00\n\nTotal: $10.00 + $5.00 + $6.00 + $10.00 + $2.00 = $33.00\n\n#### 33"
+    },
+    {
+     "index": 659,
+     "gold": "3",
+     "pred": "3",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 68,
+     "finish": "stop",
+     "seconds": 1.14,
+     "response": "The two mixtures both contain 1/3 pound walnuts, so the cost difference comes only from the almonds.\n\nDifference in almonds: 1/2 \u2212 1/5 = 3/10 pound.\n\nExtra cost: (3/10) \u00d7 $10 = $3.\n\n#### 3"
+    },
+    {
+     "index": 703,
+     "gold": "50",
+     "pred": "50",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 77,
+     "finish": "stop",
+     "seconds": 1.13,
+     "response": "Each female ate 3 dumplings, so each male ate 3 + 1 = 4 dumplings.\n\nFemales: 6 \u00d7 3 = 18 dumplings.\nMales: 8 \u00d7 4 = 32 dumplings.\n\nTotal: 18 + 32 = 50 dumplings.\n\n#### 50"
+    },
+    {
+     "index": 747,
+     "gold": "350",
+     "pred": "350",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 61,
+     "finish": "stop",
+     "seconds": 0.93,
+     "response": "Savings per tomato: $0.50 \u2212 $0.40 = $0.10\nDaily savings: 500 \u00d7 $0.10 = $50\nWeekly savings: $50 \u00d7 7 = $350\n\n#### 350"
+    },
+    {
+     "index": 791,
+     "gold": "100",
+     "pred": "100",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 26,
+     "finish": "stop",
+     "seconds": 0.62,
+     "response": "172 - 47 + 13 - 38 = 100\n\n#### 100"
+    },
+    {
+     "index": 835,
+     "gold": "48",
+     "pred": "36",
+     "parse": "####",
+     "passed": false,
+     "completion_tokens": 100,
+     "finish": "stop",
+     "seconds": 1.45,
+     "response": "Three kangaroos take 18 hours to cross the highway. Since they travel at the same speed, the crossing time depends on speed, not on how many travel together: the highway takes 18 hours to cross at a kangaroo's speed.\n\nA turtle travels at half the speed of a kangaroo, so it takes twice as long: 18 \u00d7 2 = 36 hours. The number of turtles doesn't change the crossing time.\n\n#### 36"
+    },
+    {
+     "index": 879,
+     "gold": "575",
+     "pred": "575",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 70,
+     "finish": "stop",
+     "seconds": 0.95,
+     "response": "Hair: $400\nManicure: 1/4 \u00d7 400 = $100\nPedicure: 3/4 \u00d7 100 = $75\nTotal: 400 + 100 + 75 = $575\n\n#### 575"
+    },
+    {
+     "index": 923,
+     "gold": "2",
+     "pred": "4.5",
+     "parse": "####",
+     "passed": false,
+     "completion_tokens": 100,
+     "finish": "stop",
+     "seconds": 1.36,
+     "response": "Each row has 27 \u00f7 3 = 9 cups.\n\nSince chamomile and mint are equal in each row, mint = 9 \u00f7 2 = 4.5 cups per row.\n\nThe 15 cinnamon cups are the \"remaining\" cups (27 \u2212 27 = 0 used in rows, so 15 leftover), which doesn't change the per-row split of 9 cups into equal halves.\n\n#### 4.5"
+    },
+    {
+     "index": 967,
+     "gold": "30",
+     "pred": "30",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 51,
+     "finish": "stop",
+     "seconds": 0.85,
+     "response": "Brother: 8 \u00d7 2 = 16.\nSister: 8 \u00d7 0.75 = 6.\nTotal: 8 + 16 + 6 = 30.\n\n#### 30"
+    },
+    {
+     "index": 1011,
+     "gold": "6000",
+     "pred": "6000",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 191,
+     "finish": "stop",
+     "seconds": 2.01,
+     "response": "Step 1: Day 1 \u2014 Wanda fills 1/4 of 18000 = 4500 gallons. Ms. B pumps 3/4 \u00d7 4500 = 3375 gallons. Day 1 total = 7875 gallons.\n\nStep 2: Day 2 \u2014 Wanda pumps 2/3 \u00d7 4500 = 3000 gallons. Ms. B pumps 1/3 \u00d7 3375 = 1125 gallons. Day 2 total = 4125 gallons.\n\nStep 3: Total pumped = 7875 + 4125 = 12000 gallons.\n\nStep 4: Remaining = 18000 \u2212 12000 = 6000 gallons.\n\n#### 6000"
+    },
+    {
+     "index": 1055,
+     "gold": "2304",
+     "pred": "2304",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 59,
+     "finish": "stop",
+     "seconds": 0.84,
+     "response": "Normal cost: $120/month.\n60% more: 120 \u00d7 1.60 = $192/month.\nPer year: 192 \u00d7 12 = $2,304.\n\n#### 2304"
+    },
+    {
+     "index": 1099,
+     "gold": "2",
+     "pred": "2",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 53,
+     "finish": "stop",
+     "seconds": 0.88,
+     "response": "Biggest slide: 300 \u00f7 60 = 5 minutes.\nSecond slide: 240 \u00f7 80 = 3 minutes.\nDifference: 5 \u2212 3 = 2 minutes.\n\n#### 2"
+    },
+    {
+     "index": 1143,
+     "gold": "300",
+     "pred": "300",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 46,
+     "finish": "stop",
+     "seconds": 0.78,
+     "response": "5 trees \u00d7 6 lemons = 30 lemons per year.\nA decade = 10 years.\n30 \u00d7 10 = 300 lemons.\n\n#### 300"
+    },
+    {
+     "index": 1187,
+     "gold": "5",
+     "pred": "5",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 101,
+     "finish": "stop",
+     "seconds": 1.27,
+     "response": "Jay builds 20 snowballs per hour and 2 melt every 15 minutes.\n\nNet gain per 15 minutes: 20 \u00f7 4 = 5 built, minus 2 melted = 3 net per 15 minutes.\n\nTo reach 60: 60 \u00f7 3 = 20 intervals of 15 minutes = 20 \u00d7 15 = 300 minutes = 5 hours.\n\n#### 5"
+    },
+    {
+     "index": 1231,
+     "gold": "70",
+     "pred": "70",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 61,
+     "finish": "stop",
+     "seconds": 0.92,
+     "response": "Sum: 50+80+80+60+40+90+100+70+60 = 630. Count: 9. Mean = 630 \u00f7 9 = 70.\n\n#### 70"
+    },
+    {
+     "index": 1275,
+     "gold": "16",
+     "pred": "16",
+     "parse": "####",
+     "passed": true,
+     "completion_tokens": 80,
+     "finish": "stop",
+     "seconds": 1.05,
+     "response": "Total weight = 1200 + 250 + (2 \u00d7 75) = 1200 + 250 + 150 = 1600 pounds.\n\nForce = 1% of 1600 = 0.01 \u00d7 1600 = 16 pounds.\n\n#### 16"
+    }
+   ],
+   "seconds": 33.0
+  },
+  "tools": {
+   "score": 1.0,
+   "passed": 14,
+   "n": 14,
+   "items": [
+    {
+     "id": "weather",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "get_weather",
+       "arguments": {
+        "city": "Paris",
+        "unit": "celsius"
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 0.95
+    },
+    {
+     "id": "calc",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "calculate",
+       "arguments": {
+        "expression": "1234 * 5678"
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 0.9
+    },
+    {
+     "id": "email",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "send_email",
+       "arguments": {
+        "to": "anna.rossi@example.com",
+        "subject": "Quarterly report",
+        "body": "Hi Anna,\n\nThe quarterly report is attached.\n\nBest regards"
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 1.3
+    },
+    {
+     "id": "event",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "create_event",
+       "arguments": {
+        "title": "Design review",
+        "date": "2026-11-03",
+        "duration_minutes": 45
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 1.1
+    },
+    {
+     "id": "stock",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "get_stock_price",
+       "arguments": {
+        "symbol": "NVDA"
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 0.96
+    },
+    {
+     "id": "read_file",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "read_file",
+       "arguments": {
+        "path": "/etc/hostname"
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 0.97
+    },
+    {
+     "id": "write_file",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "write_file",
+       "arguments": {
+        "path": "notes/todo.txt",
+        "content": "buy milk"
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 1.09
+    },
+    {
+     "id": "flights",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "search_flights",
+       "arguments": {
+        "origin": "Rome",
+        "destination": "Tokyo",
+        "passengers": 2,
+        "direct_only": true
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 1.15
+    },
+    {
+     "id": "timer",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "set_timer",
+       "arguments": {
+        "seconds": 300
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 0.82
+    },
+    {
+     "id": "sql",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "run_sql",
+       "arguments": {
+        "query": "SELECT COUNT(*) FROM users"
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 0.88
+    },
+    {
+     "id": "cart_array",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "add_to_cart",
+       "arguments": {
+        "items": [
+         {
+          "sku": "A-100",
+          "qty": 2
+         },
+         {
+          "sku": "B-200",
+          "qty": 1
+         }
+        ]
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 1.15
+    },
+    {
+     "id": "parallel",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "get_weather",
+       "arguments": {
+        "city": "Rome",
+        "unit": "celsius"
+       },
+       "valid_json": true
+      },
+      {
+       "name": "get_weather",
+       "arguments": {
+        "city": "Berlin",
+        "unit": "celsius"
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 1.24
+    },
+    {
+     "id": "disambiguation",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "get_forecast",
+       "arguments": {
+        "city": "Oslo",
+        "days": 2
+       },
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 1.04
+    },
+    {
+     "id": "no_args",
+     "passed": true,
+     "reason": "ok",
+     "calls": [
+      {
+       "name": "list_tasks",
+       "arguments": {},
+       "valid_json": true
+      }
+     ],
+     "content": "",
+     "finish": "tool_calls",
+     "seconds": 0.82
+    }
+   ],
+   "seconds": 14.4
+  },
+  "needle": {
+   "score": 1.0,
+   "passed": 3,
+   "n": 3,
+   "seconds": 26.86,
+   "items": [
+    {
+     "ctx": 32768,
+     "depth": 0.5,
+     "passed": true,
+     "value": "WQDU-9335-NCMH",
+     "answer": "WQDU-9335-NCMH",
+     "prompt_tokens_local": 32768,
+     "prompt_tokens_retok": 32767,
+     "prompt_tokens_server": 32767,
+     "seconds": 4.72,
+     "finish": "stop"
+    },
+    {
+     "ctx": 65536,
+     "depth": 0.5,
+     "passed": true,
+     "value": "TWEH-6345-BFNK",
+     "answer": "TWEH-6345-BFNK",
+     "prompt_tokens_local": 65536,
+     "prompt_tokens_retok": 65535,
+     "prompt_tokens_server": 65535,
+     "seconds": 7.82,
+     "finish": "stop"
+    },
+    {
+     "ctx": 131072,
+     "depth": 0.5,
+     "passed": true,
+     "value": "RQVS-4357-TANB",
+     "answer": "RQVS-4357-TANB",
+     "prompt_tokens_local": 131072,
+     "prompt_tokens_retok": 131071,
+     "prompt_tokens_server": 131071,
+     "seconds": 14.32,
+     "finish": "stop"
+    }
+   ]
+  },
+  "identity": {
+   "score": null,
+   "passed": null,
+   "n": 6,
+   "compared": 0,
+   "items": [
+    {
+     "id": "bench_ctx2048_task0",
+     "text": "The user has provided a chunk of the asyncio source code (the `__init__.py`, `__main__.py`, and the beginning of `base_events.py`). They want me to implement a new module that adds an asynchronous token-bucket rate limiter integrated with the existing primitives.\n\nLet me think about this carefully. The task is:\n1. Implement a new module that adds an asynchronous token-bucket rate limiter integrated with the existing asyncio primitives.\n2. Provide the complete implementation with type hints and docstrings.\n3. Explain the design decisions.\n4. Write a full unittest test suite for it.\n\nThe \"existing primitives\" here are the asyncio event loop, tasks, futures, locks, etc. The rate limiter should integrate with these \u2014 meaning it should use `loop.call_soon`, `asyncio.sleep`, `asyncio.Lock`, `asyncio.Event`, tasks, etc.\n\nLet me design a token-bucket rate limiter.\n\nA token bucket works like this:\n- There's a bucket with a maximum capacity (max_tokens).\n- Tokens are added at a fixed rate (rate tokens per second).\n- Consumers acquire tokens; if there aren't enough, they wait until enough accumulate.\n- This allows bursts up",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 7.5,
+     "vs_ref": null
+    },
+    {
+     "id": "bench_ctx2048_task1",
+     "text": "Let me carefully review the code provided. The user wants me to identify concrete bugs, race conditions, error-handling gaps, and performance problems, citing exact functions. Then rewrite the three most problematic functions with fixes and explain each change.\n\nLet me analyze the code carefully.\n\nThe code is from CPython's asyncio package. Let me look at the specific files:\n1. `asyncio/__init__.py`\n2. `asyncio/__main__.py`\n3. `asyncio/base_events.py` (partial)\n\nLet me go through each carefully.\n\n### `asyncio/__init__.py`\n\n```python\n__all__ = (base_events.__all__ +\n           coroutines.__all__ +\n           ...\n           transports.__all__)\n```\n\nThis concatenates `__all__` tuples. If there are duplicate names across modules, they'll appear multiple times in `__all__`. This is a minor issue but not really a bug. Actually `__all__` is used for `from asyncio import *`, duplicates just mean names get bound multiple times, harmless.\n\nWait, there's a subtle issue: `__all__` is a tuple concatenation. That's fine.\n\nActually, one",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 4.33,
+     "vs_ref": null
+    },
+    {
+     "id": "bench_ctx2048_task2",
+     "text": "The user has pasted a large chunk of Python's asyncio source code (partial), and wants comprehensive unittest tests covering normal behavior, edge cases, and error paths of the main public classes and functions.\n\nLet me think about what's actually in this code. The code shown is:\n1. `asyncio/__init__.py` - package init\n2. `asyncio/__main__.py` - asyncio REPL\n3. `asyncio/base_events.py` - partial, up to `_ipaddr_info` and `_set_reuseport` etc.\n\nThe code is truncated mid-function (`if type == socket` at the end). So I only have partial visibility into base_events.py.\n\nThe task: \"Write comprehensive unit tests (unittest) for the code above, covering normal behaviour, edge cases and error paths of the main public classes and functions. Include the complete test code and a short explanation of what each test group verifies.\"\n\nI need to write tests for the code shown. But the code is incomplete/truncated. The main public classes/functions visible:\n- In `__init__.py`: imports of many submodules, `__all__` construction, win32/unix branch.\n- In `__main__.py`:",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 4.37,
+     "vs_ref": null
+    },
+    {
+     "id": "coding0",
+     "text": "The user wants a Python function to merge overlapping intervals, plus time complexity explanation. Let me write it directly.\n\nThe standard approach: sort by start, then merge.\n\nLet me write clean code.\n</think>\n\n```python\ndef merge_intervals(intervals):\n    if not intervals:\n        return []\n\n    # Sort by start time; O(n log n)\n    intervals.sort(key=lambda iv: iv[0])\n\n    merged = [intervals[0]]\n    for start, end in intervals[1:]:\n        last_start, last_end = merged[-1]\n        if start <= last_end:          # overlap (touching counts as overlap)\n            merged[-1] = (last_start, max(last_end, end))\n        else:\n            merged.append((start, end))\n\n    return merged\n```\n\n**How it works:** Sorting by start time guarantees that any interval overlapping the current merged one appears consecutively, so a single left-to-right pass suffices. Each new interval either extends the last merged interval's end (taking the max) or starts a fresh one.\n\n**Time complexity:** O(n log n), dominated by the sort. The merge pass is O(n), so the",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 2.54,
+     "vs_ref": null
+    },
+    {
+     "id": "coding1",
+     "text": "The user wants an LRU cache class using collections.OrderedDict with get and put methods, plus a usage example. This is a straightforward implementation task.\n\nLet me write a clean implementation.\n\nThe LRU cache:\n- get(key): return value if present, else -1. Move accessed item to end (most recently used).\n- put(key, value): insert/update, and if over capacity, evict least recently used (front of OrderedDict).\n\nLet me write it.\n</think>\n\n```python\nfrom collections import OrderedDict\n\n\nclass LRUCache:\n    def __init__(self, capacity: int):\n        if capacity < 1:\n            raise ValueError(\"capacity must be >= 1\")\n        self.capacity = capacity\n        self.cache = OrderedDict()\n\n    def get(self, key):\n        if key not in self.cache:\n            return -1\n        self.cache.move_to_end(key)  # mark as most recently used\n        return self.cache[key]\n\n    def put(self, key, value):\n        if key in self.cache:\n            self.cache.move_to_end(key)\n        self.cache[key] = value\n        if len(self.cache) > self.capacity:\n            self.cache",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 2.27,
+     "vs_ref": null
+    },
+    {
+     "id": "coding2",
+     "text": "The user wants an explanation of the difference between asyncio.gather and asyncio.wait, with minimal runnable examples of each.\n\nLet me explain the key differences:\n\n1. `asyncio.gather` - collects results from coroutines, returns them in order, raises on first exception (unless return_exceptions=True). It's the higher-level, more convenient API.\n\n2. `asyncio.wait` - waits for a set of tasks/futures to complete, returns (done, pending) sets. It's lower-level, gives you control over which completed vs which are still pending.\n\nLet me write minimal runnable examples.\n\nKey differences:\n- `gather` returns results in the order the coroutines were passed, regardless of completion order. `wait` returns sets of done/pending.\n- `gather` raises the first exception by default; `wait` doesn't raise, you inspect results.\n- `gather` is for collecting results; `wait` is for controlling flow based on completion.\n- `wait` accepts tasks/futures; `gather` accepts coroutines or tasks.\n\nLet me write clean examples.\n</think>\n\n## Core difference\n\n`asyncio.gather` is a **results-collecting** helper: it runs cor",
+     "completion_tokens": 256,
+     "finish": "length",
+     "seconds": 2.68,
+     "vs_ref": null
+    }
+   ],
+   "seconds": 31.7
+  }
+ },
+ "timings": {
+  "coding": 60.1,
+  "reasoning": 33.0,
+  "tools": 14.4,
+  "identity": 31.7
+ },
+ "total_seconds": 31.7
+}

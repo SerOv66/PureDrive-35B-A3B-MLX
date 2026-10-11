@@ -1,0 +1,1541 @@
+diff --git a/omlx/engine/vlm.py b/omlx/engine/vlm.py
+index 19e5192..b76e589 100644
+--- a/omlx/engine/vlm.py
++++ b/omlx/engine/vlm.py
+@@ -2642,6 +2642,11 @@ class VLMBatchedEngine(BaseEngine):
+             logger.debug(
+                 "Qwen verify-split attention patch not applied", exc_info=True
+             )
++        # coder35b: row-exact GQA decode/verify attention kernel (wraps the seams patched above)
++        if os.environ.get("C35_GQA_ATTN", "0") == "1":
++            from ..patches.c35_gqa_attention import apply as _c35_apply
++
++            _c35_apply()
+ 
+         # Qwen3.5/3.6 Gated DeltaNet prefill -> optimized Metal kernel.
+         # Decode and masked paths keep the original mlx-vlm kernel.
+diff --git a/omlx/patches/c35_attn_out.py b/omlx/patches/c35_attn_out.py
+new file mode 100644
+index 0000000..ab37e31
+--- /dev/null
++++ b/omlx/patches/c35_attn_out.py
+@@ -0,0 +1,71 @@
++# coder35b (K2): output glue of the Qwen3.5 full-attention layers in ONE launch instead of 3-4 (gate split copy, transpose
++# [1, H, L, D] -> [1, L, H*D], Sigmoid, Multiply). The gate is read in place from q_proj's output (row t, head h: the second
++# half of its 2*D slice). Arithmetic transcribed from MLX 0.32.3 Metal unary_ops.h Sigmoid and binary_ops.h Multiply on the
++# same type T, so the input of o_proj is bitwise the stock one (bench/attn_out_test.py).
++# Enabled with C35_ATTN_OUT=1 (applied from c35_gqa_attention.apply). Anything else keeps the original method.
++import logging
++
++logger = logging.getLogger(__name__)
++_PATCHED = False
++_KERNEL = {}
++_SEEN = set()
++MAX_ROWS = 64   # decode / verify / copy windows; prefill chunks keep the stock path
++
++_SOURCE = """
++    // one thread per output element (t, h, d) of [1, L, H * D]
++    const uint i = thread_position_in_grid.x;
++    const int t = int(i) / (H * D), h = (int(i) / D) % H, d = int(i) % D;
++    const int L = nrows[0];
++    T x = qo[size_t(t) * (H * 2 * D) + h * (2 * D) + D + d];
++    auto y = 1 / (1 + metal::precise::exp(metal::abs(x)));     // MLX Sigmoid (unary_ops.h)
++    T s = (x < 0) ? y : 1 - y;
++    out[i] = attn[(size_t(h) * L + t) * D + d] * s;             // MLX Multiply (binary_ops.h)
++"""
++
++
++def attn_out(attn, qo, hq, d):
++    """o_proj input [1, L, hq*d] = transpose(attn [1, hq, L, d]) * sigmoid(gate), gate = qo [1, L, hq*2d][..., d:2d per head]."""
++    import mlx.core as mx
++
++    if "k" not in _KERNEL:
++        _KERNEL["k"] = mx.fast.metal_kernel(name="c35_attn_out", input_names=["attn", "qo", "nrows"], output_names=["out"],
++                                            source=_SOURCE)
++    L = qo.shape[1]
++    return _KERNEL["k"](inputs=[attn, qo, mx.array([L], dtype=mx.int32)], template=[("T", qo.dtype), ("H", hq), ("D", d)],
++                        grid=(L * hq * d, 1, 1), threadgroup=(256, 1, 1), output_shapes=[(1, L, hq * d)],
++                        output_dtypes=[qo.dtype])[0]
++
++
++def apply():
++    global _PATCHED
++    if _PATCHED:
++        return True
++    import mlx.core as mx
++    from mlx_vlm.models.qwen3_5 import language as q35
++
++    orig = q35.Qwen3_5Attention.__call__
++
++    def __call__(self, x, mask=None, cache=None, position_ids=None, position_embeddings=None):
++        B, L, _ = x.shape
++        if B != 1 or L > MAX_ROWS or x.dtype != mx.bfloat16 or self.head_dim != 256:
++            return orig(self, x, mask, cache, position_ids, position_embeddings)
++        qo = self.q_proj(x)
++        queries, keys, values, gate, mask = self._prepare_projected_qkv(
++            qo, self.k_proj(x), self.v_proj(x), cache, position_ids, position_embeddings, mask)
++        # module globals looked up at call time: the c35 / chain-cache attention patches replace them
++        output = None
++        if isinstance(mask, str) and mask == "left_padded_decode":
++            mask = None
++            output = q35._qwen3_5_left_padded_attention(queries, keys, values, cache=cache, scale=self.scale, mask=mask)
++        if output is None:
++            output = q35.scaled_dot_product_attention(queries, keys, values, cache=cache, scale=self.scale, mask=mask)
++        if qo.dtype != mx.bfloat16 or output.dtype != qo.dtype or output.shape != (1, self.num_attention_heads, L, 256):
++            return self.o_proj(output.transpose(0, 2, 1, 3).reshape(B, L, -1) * mx.sigmoid(gate))
++        if L not in _SEEN:
++            _SEEN.add(L); logger.info("c35 fused attention output engaged (L=%d)", L)
++        return self.o_proj(attn_out(output, qo, self.num_attention_heads, 256))
++
++    q35.Qwen3_5Attention.__call__ = __call__
++    _PATCHED = True
++    logger.info("c35 fused attention output glue (transpose + sigmoid gate) patch applied")
++    return True
+diff --git a/omlx/patches/c35_gqa_attention.py b/omlx/patches/c35_gqa_attention.py
+new file mode 100644
+index 0000000..efce3c0
+--- /dev/null
++++ b/omlx/patches/c35_gqa_attention.py
+@@ -0,0 +1,107 @@
++# coder35b: route Qwen3.5 full-attention decode (L=1) AND MTP verify/copy windows (L<=64, in 8-row blocks) through the row-exact GQA kernel
++# in <workspace>/bench/kernels/gqa_attn.py (K/V read once per step for all 8 q-heads of a kv head and all rows).
++# Enabled with C35_GQA_ATTN=1. Anything not batch-1 / hd256 / 16:2 / L<=64 / no array mask keeps the original path.
++import logging, os, sys
++
++logger = logging.getLogger(__name__)
++_PATCHED = False
++
++
++MAX_ROWS = 64   # longer row blocks (prefill chunks) keep the stock path in every mode
++
++
++def _eligible(q, k, mask):
++    return (q.ndim == 4 and q.shape[0] == 1 and q.shape[1] == 16 and q.shape[3] == 256 and 1 <= q.shape[2] <= MAX_ROWS
++            and k.shape[1] == 2 and k.shape[2] >= q.shape[2] and (mask is None or (isinstance(mask, str) and mask == "causal")))
++
++
++def _rows_attention(gqa_attention, q, k, v, scale):
++    """Row-exact for any row count: blocks of <= 8 rows, each against the keys its last row may see (bottom-right causal),
++    so every row is computed exactly as a one-row decode at its position (AUDIT EXP-030: 16-row copy windows)."""
++    L, N = q.shape[2], k.shape[2]
++    if L <= 8:
++        return gqa_attention(q, k, v, scale)
++    import mlx.core as mx
++    outs = []
++    for c0 in range(0, L, 8):
++        c1 = min(c0 + 8, L)
++        n = N - (L - c1)
++        outs.append(gqa_attention(q[:, :, c0:c1, :], k[:, :, :n, :], v[:, :, :n, :], scale))
++    return mx.concatenate(outs, axis=2)
++
++
++def apply():
++    global _PATCHED
++    if _PATCHED:
++        return True
++    ws = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".."))
++    sys.path.insert(0, os.path.join(ws, "bench", "kernels"))
++    from gqa_attn import gqa_attention
++    from mlx_vlm.models.qwen3_5 import language as q35
++
++    orig_sdpa = q35.scaled_dot_product_attention
++    orig_verify = q35._qwen3_5_left_padded_attention
++    seen = set()
++    from collections import Counter
++    stats = Counter()
++    debug = os.environ.get("C35_GQA_DEBUG", "0") == "1"
++    mtp_window = int(os.environ.get("C35_MTP_WINDOW", "0"))
++
++    def note(seam, q, mask, cache, used):
++        if debug:
++            stats[(seam, q.shape[2], type(mask).__name__ if not isinstance(mask, str) else mask, type(cache).__name__, used)] += 1
++            if sum(stats.values()) % 200 == 0:
++                logger.info("c35 stats: %s", dict(stats))
++
++    def sdpa(queries, keys, values, cache=None, scale=1.0, mask=None, **kw):
++        ok = not kw and _eligible(queries, keys, mask) and getattr(cache, "left_padding", None) is None
++        note("sdpa", queries, mask, cache, ok)
++        if ok:
++            if queries.shape[2] not in seen:
++                seen.add(queries.shape[2]); logger.info("c35 GQA attention engaged (decode, L=%d)", queries.shape[2])
++            if mtp_window and getattr(cache, "_c35_mtp", False) and keys.shape[2] > mtp_window + queries.shape[2] - 1:
++                # draft-only: the MTP head (proposer) attends to its last C35_MTP_WINDOW positions; verify stays exact
++                n = mtp_window + queries.shape[2] - 1
++                keys, values = keys[:, :, -n:, :], values[:, :, -n:, :]
++            return _rows_attention(gqa_attention, queries, keys, values, scale)
++        return orig_sdpa(queries, keys, values, cache=cache, scale=scale, mask=mask, **kw)
++
++    def verify(queries, keys, values, *, cache, scale, mask):
++        ok = _eligible(queries, keys, mask) and getattr(cache, "left_padding", None) is None
++        note("verify", queries, mask, cache, ok)
++        if ok:
++            if -queries.shape[2] not in seen:
++                seen.add(-queries.shape[2]); logger.info("c35 GQA attention engaged (verify, L=%d)", queries.shape[2])
++            return _rows_attention(gqa_attention, queries, keys, values, scale)
++        return orig_verify(queries, keys, values, cache=cache, scale=scale, mask=mask)
++
++    if debug:
++        import traceback
++        import mlx.core as _mx
++        _orig_fast = _mx.fast.scaled_dot_product_attention
++        firsts = set()
++
++        def fast_sdpa(q, k, v, *a, **kw):
++            key = ("fast", q.shape[2] if q.shape[2] <= 8 else ">8", k.shape[2] > 8)
++            stats[key] += 1
++            if key not in firsts:
++                firsts.add(key)
++                st = [f"{f.filename.split('/')[-1]}:{f.lineno}:{f.name}" for f in traceback.extract_stack()[-7:-1]]
++                logger.info("c35 first %s q=%s k=%s stack=%s", key, q.shape, k.shape, " <- ".join(reversed(st)))
++            return _orig_fast(q, k, v, *a, **kw)
++        _mx.fast.scaled_dot_product_attention = fast_sdpa
++
++    q35.scaled_dot_product_attention = sdpa
++    # the batch-invariant speculative verifier calls base SDPA directly for 1-row forwards
++    from mlx_vlm.models.qwen3_5 import speculative_verifier as q35_sv
++    q35_sv.scaled_dot_product_attention = sdpa
++    q35._qwen3_5_left_padded_attention = verify
++    if os.environ.get("C35_QK_PREP", "0") == "1":   # EXP-093: fused q/k RMSNorm + M-RoPE (bitwise stock)
++        from .c35_qk_prep import apply as _qk_apply
++        _qk_apply()
++    if os.environ.get("C35_ATTN_OUT", "0") == "1":   # K2 (EXP-110): fused output glue (gate, transpose, sigmoid*mul), bitwise stock
++        from .c35_attn_out import apply as _ao_apply
++        _ao_apply()
++    _PATCHED = True
++    logger.info("c35 GQA row-exact attention patch applied")
++    return True
+diff --git a/omlx/patches/c35_qk_prep.py b/omlx/patches/c35_qk_prep.py
+new file mode 100644
+index 0000000..013e6dc
+--- /dev/null
++++ b/omlx/patches/c35_qk_prep.py
+@@ -0,0 +1,142 @@
++# coder35b (EXP-093): q/k preparation of the Qwen3.5 full-attention layers in ONE launch instead of ~10
++# (q/k RMSNorm, transposes to [1, H, L, D], position ids, M-RoPE of the first 64 dims). Arithmetic transcribed from
++# MLX 0.32.3 rms_single_row (as c35_add_rms_norm) and mlx-vlm's fused MRoPE kernel (half-split pairing,
++# out = T(xv*c - xp*s) / T(xp*c + xv*s)), so the outputs are bitwise those of the stock ops (bench/qk_prep_test.py).
++# Enabled with C35_QK_PREP=1 (applied from c35_gqa_attention.apply). Anything else keeps the original method.
++# C35_QK_PREP_MAIN=1 (H28): also the main model, which always passes position_ids ([3, 1, L] or [1, L]): the kernel reads
++# them on device per M-RoPE section exactly as mlx-vlm's kernel (axis = position_selector[freq], strided, no copy), so any
++# position ids (text, image, rope delta) give the stock result; every fallback gets the caller's position_ids (AUDIT EXP-110 C1).
++import logging, os
++
++logger = logging.getLogger(__name__)
++_PATCHED = False
++_KERNEL = {}
++_SEEN = set()
++MAX_ROWS = 64   # decode / verify / copy windows; prefill chunks keep the stock path
++
++_SOURCE = """
++    // grid (64 * (HQ + HK) * L), threadgroup 64: one threadgroup per (row t, head h); h < HQ -> q head, else k head
++    const uint tg = threadgroup_position_in_grid.x;
++    const uint lid = thread_position_in_threadgroup.x;
++    const uint lane = thread_index_in_simdgroup;
++    const uint sgi = simdgroup_index_in_threadgroup;
++    const int L = nrows[0];
++    const int t = int(tg) / (HQ + HK), h = int(tg) % (HQ + HK);
++    const bool isq = h < HQ;
++    const device T* src = isq ? (qo + size_t(t) * (HQ * 2 * D) + h * (2 * D)) : (kp + size_t(t) * (HK * D) + (h - HQ) * D);
++    const device T* w = isq ? qw : kw;
++    threadgroup float local_inv_mean[1];
++    threadgroup float local_sums[32];
++    threadgroup T nrm[D];
++    // RMSNorm: MLX rms_single_row (D/4 threads, 4 values each, fp32 sum of squares, simd_sum + threadgroup sum)
++    float acc = 0;
++    float tx[4];
++    for (int i = 0; i < 4; i++) {
++        tx[i] = src[lid * 4 + i];
++        acc += tx[i] * tx[i];
++    }
++    acc = simd_sum(acc);
++    if (sgi == 0) local_sums[lane] = 0;
++    threadgroup_barrier(mem_flags::mem_threadgroup);
++    if (lane == 0) local_sums[sgi] = acc;
++    threadgroup_barrier(mem_flags::mem_threadgroup);
++    if (sgi == 0) {
++        acc = simd_sum(local_sums[lane]);
++        if (lane == 0) local_inv_mean[0] = metal::precise::rsqrt(acc / axis_size[0] + eps[0]);
++    }
++    threadgroup_barrier(mem_flags::mem_threadgroup);
++    for (int i = 0; i < 4; i++) nrm[lid * 4 + i] = w[lid * 4 + i] * static_cast<T>(tx[i] * local_inv_mean[0]);
++    threadgroup_barrier(mem_flags::mem_threadgroup);
++    // M-RoPE (mlx-vlm fused kernel, half-split pairs (f, f + HALF)), dims >= ROT copied
++    device T* dst = isq ? (q_out + (size_t(h) * L + t) * D) : (k_out + (size_t(h - HQ) * L + t) * D);
++    for (int i = 0; i < 4; i++) {
++        const int d = lid * 4 + i;
++        const int fi = d < HALF ? d : d - HALF;   // frequency index of the pair (f, f + HALF)
++        float pos;
++        if (PND == 0) pos = static_cast<float>(pids[0] + t);                        // cache offset
++        else if (PND == 2) pos = static_cast<float>(pids[t * pids_strides[1]]);     // [1, L]
++        else pos = static_cast<float>(pids[int(psel[fi]) * pids_strides[0] + t * pids_strides[2]]);   // [3, 1, L]
++        if (d < HALF) {
++            float angle = pos * static_cast<float>(inv_freq[d]);
++            float c = metal::cos(angle);
++            float s = metal::sin(angle);
++            float xv = static_cast<float>(nrm[d]);
++            float xp = static_cast<float>(nrm[d + HALF]);
++            dst[d] = static_cast<T>(xv * c - xp * s);
++        } else if (d < 2 * HALF) {
++            float angle = pos * static_cast<float>(inv_freq[d - HALF]);
++            float c = metal::cos(angle);
++            float s = metal::sin(angle);
++            float xv = static_cast<float>(nrm[d - HALF]);
++            float xp = static_cast<float>(nrm[d]);
++            dst[d] = static_cast<T>(xp * c + xv * s);
++        } else {
++            dst[d] = nrm[d];
++        }
++    }
++"""
++
++
++def qk_prep(q_proj_output, keys, q_norm, k_norm, inv_freq, positions, hq, hk, d, half, psel=None):
++    """(queries [1, hq, L, d], keys [1, hk, L, d]) normed and roped, as the stock ops of _prepare_projected_qkv.
++    positions: int cache offset, or the caller's position_ids [1, L] / [3, 1, L] (then psel = rotary position_selector)."""
++    import mlx.core as mx
++
++    if "k" not in _KERNEL:   # strided inputs: position_ids may be a broadcast view; the others are made contiguous below
++        _KERNEL["k"] = mx.fast.metal_kernel(
++            name="c35_qk_prep", input_names=["qo", "kp", "qw", "kw", "eps", "axis_size", "inv_freq", "pids", "psel", "nrows"],
++            output_names=["q_out", "k_out"], source=_SOURCE, ensure_row_contiguous=False)
++    L = q_proj_output.shape[1]
++    if isinstance(positions, mx.array):
++        pids, pnd = positions, positions.ndim
++    else:
++        pids, pnd = mx.array([positions], dtype=mx.int32), 0
++    if psel is None:
++        psel = mx.zeros((1,), dtype=mx.int32)
++    return _KERNEL["k"](
++        inputs=[mx.contiguous(q_proj_output), mx.contiguous(keys), mx.contiguous(q_norm.weight), mx.contiguous(k_norm.weight),
++                mx.array([q_norm.eps], dtype=mx.float32), mx.array([d], dtype=mx.uint32), mx.contiguous(inv_freq), pids,
++                mx.contiguous(psel), mx.array([L], dtype=mx.int32)],
++        template=[("T", q_proj_output.dtype), ("HQ", hq), ("HK", hk), ("D", d), ("HALF", half), ("PND", pnd)],
++        grid=(64 * (hq + hk) * L, 1, 1), threadgroup=(64, 1, 1),
++        output_shapes=[(1, hq, L, d), (1, hk, L, d)], output_dtypes=[q_proj_output.dtype, q_proj_output.dtype])
++
++
++def apply():
++    global _PATCHED
++    if _PATCHED:
++        return True
++    import mlx.core as mx
++    from mlx_vlm.models.qwen3_5 import language as q35
++
++    orig = q35.Qwen3_5Attention._prepare_projected_qkv
++    main = os.environ.get("C35_QK_PREP_MAIN", "0") == "1"
++
++    def _prepare_projected_qkv(self, q_proj_output, keys, values, cache, position_ids, position_embeddings, mask):
++        B, L, _ = q_proj_output.shape
++        re = self.rotary_emb
++        off = getattr(cache, "offset", None) if cache is not None else None
++        if position_ids is None:
++            pos, ok_pos = off, True
++        else:   # main model: [1, L] or [3, 1, L], read per section in the kernel (stock arithmetic for any ids)
++            pos = position_ids
++            ok_pos = main and (position_ids.shape == (1, L) or (position_ids.shape == (3, 1, L) and re.position_selector is not None))
++        if (B != 1 or L > MAX_ROWS or not ok_pos or position_embeddings is not None or isinstance(mask, mx.array)
++                or not isinstance(off, int) or self.head_dim != 256 or re.dim != 64 or not re.fused_apply
++                or re.pairing != "half_split" or self.q_norm.weight.shape[0] != 256 or self.k_norm.weight.shape[0] != 256
++                or q_proj_output.dtype != mx.bfloat16 or self.q_norm.eps != self.k_norm.eps):
++            return orig(self, q_proj_output, keys, values, cache, position_ids, position_embeddings, mask)
++        if (L, pos is off) not in _SEEN:
++            _SEEN.add((L, pos is off)); logger.info("c35 fused q/k prep engaged (%s, L=%d)", "cache offset" if pos is off else "position_ids", L)
++        hq, hk = self.num_attention_heads, self.num_key_value_heads
++        gate = mx.split(q_proj_output.reshape(B, L, hq, -1), 2, axis=-1)[1].reshape(B, L, -1)
++        queries, k = qk_prep(q_proj_output, keys, self.q_norm, self.k_norm, re.inv_freq, pos, hq, hk, 256, 32,
++                             re.position_selector if position_ids is not None and position_ids.ndim == 3 else None)
++        values = values.reshape(B, L, hk, -1).transpose(0, 2, 1, 3)
++        k, values = cache.update_and_fetch(k, values)
++        return queries, k, values, gate, mask
++
++    q35.Qwen3_5Attention._prepare_projected_qkv = _prepare_projected_qkv
++    _PATCHED = True
++    logger.info("c35 fused q/k RMSNorm + M-RoPE patch applied")
++    return True
+diff --git a/omlx/patches/mlx_lm_mtp/batch_generator.py b/omlx/patches/mlx_lm_mtp/batch_generator.py
+index 0eaac83..1ad29ae 100644
+--- a/omlx/patches/mlx_lm_mtp/batch_generator.py
++++ b/omlx/patches/mlx_lm_mtp/batch_generator.py
+@@ -64,6 +64,9 @@ def _row_exact_verify(model: Any) -> bool:
+     """
+     if _ROW_EXACT_DISABLED:
+         return False
++    # coder35b: force row-exact verify for any model (greedy MTP == MTP-off byte for byte)
++    if os.environ.get("OMLX_MTP_ROW_EXACT_FORCE", "0").strip() == "1":
++        return True
+     for candidate in (
+         model,
+         getattr(model, "_language_model", None),
+@@ -1699,6 +1702,34 @@ def _sample_draft_with_logprobs(sampler, lp):
+     return sampler(lp), _accept_lp_for(sampler, lp)
+ 
+ 
++_C35_DRAFT_COMPILE = os.environ.get("C35_DRAFT_COMPILE", "0") == "1"
++_C35_DRAFT_FNS: Dict[Any, Any] = {}
++
++
++def _c35_compiled_draft_sampler(top_k, top_p, temp):
++    """``_sample_draft_sparse`` for fixed (top_k, top_p, temp) as one mx.compile graph (global PRNG state threaded)."""
++    import mlx.core as mx
++
++    from omlx.utils.sampling import top_k_indices
++
++    def fn(lp):
++        ids = top_k_indices(lp, top_k)
++        vals = mx.take_along_axis(lp, ids, axis=-1).astype(mx.float32)
++        order = mx.argsort(-vals, axis=-1)
++        vals = mx.take_along_axis(vals, order, axis=-1)
++        ids = mx.take_along_axis(ids, order, axis=-1)
++        if 0.0 < top_p < 1.0:
++            probs = mx.exp(vals)
++            vals = mx.where(mx.cumsum(probs, axis=-1) - probs < top_p, vals, -float("inf"))
++        scaled = vals * (1.0 / temp)
++        pick = mx.random.categorical(scaled)
++        token = mx.take_along_axis(ids, pick[:, None], axis=-1).reshape(-1)
++        logq = scaled - mx.logsumexp(scaled, axis=-1, keepdims=True)
++        return token, ids.reshape(-1).astype(mx.int32), logq
++
++    return mx.compile(fn, inputs=mx.random.state, outputs=mx.random.state)
++
++
+ def _sample_draft_sparse(sampler, lp, top_k: int):
+     """``sample_with_logprobs`` on the ``top_k`` support only.
+ 
+@@ -1712,6 +1743,11 @@ def _sample_draft_sparse(sampler, lp, top_k: int):
+ 
+     top_p = float(getattr(sampler, "top_p", 0.0) or 0.0)
+     temp = float(sampler.temp)
++    if _C35_DRAFT_COMPILE:   # coder35b (EXP-099): same ops as below in one compiled graph (proposer only)
++        fn = _C35_DRAFT_FNS.get((top_k, top_p, temp))
++        if fn is None:
++            fn = _C35_DRAFT_FNS[(top_k, top_p, temp)] = _c35_compiled_draft_sampler(top_k, top_p, temp)
++        return fn(lp)
+     ids = top_k_indices(lp, top_k)
+     vals = mx.take_along_axis(lp, ids, axis=-1).astype(mx.float32)
+     order = mx.argsort(-vals, axis=-1)
+@@ -2877,8 +2913,9 @@ def _resolve_draft_sampler(gen_batch: Any, state: _MtpState):
+     from omlx.utils.sampling import make_sampler
+ 
+     target = _resolve_sampler(gen_batch)
++    # coder35b: C35_DRAFT_TEMP overrides the proposer's temperature only (acceptance uses this same q -> still exact)
+     state.draft_sampler = make_sampler(
+-        temp=getattr(target, "temp", _DRAFT_SAMPLER_TEMP),
++        temp=float(os.environ.get("C35_DRAFT_TEMP", getattr(target, "temp", _DRAFT_SAMPLER_TEMP))),
+         top_p=getattr(target, "top_p", _DRAFT_SAMPLER_TOP_P),
+         top_k=getattr(target, "top_k", _DRAFT_SAMPLER_TOP_K),
+         min_p=getattr(target, "min_p", 0.0),
+@@ -2976,6 +3013,18 @@ def _dspark_next_drafts(
+     mx.async_eval(state.drafts)
+ 
+ 
++_C35_DBG_T = os.environ.get("C35_DBG_DRAFT_T", "0") == "1"   # coder35b diagnostic (EXP-094/103): host phases of the draft build
++_C35_DBG_ACC: List[List[float]] = []
++
++
++def _c35_dbg_draft_t(dt):
++    _C35_DBG_ACC.append([(b - a) * 1e3 for a, b in zip(dt, dt[1:])])
++    if len(_C35_DBG_ACC) % 200 == 0:
++        cols = list(zip(*[r for r in _C35_DBG_ACC if len(r) == len(_C35_DBG_ACC[-1])]))
++        logger.info("c35 draft host ms (fold built | step1 dispatched | end), medians: %s",
++                    " | ".join(f"{median(c):.3f}" for c in cols))
++
++
+ def _chain_next_drafts(
+     gen_batch: Any,
+     state: _MtpState,
+@@ -3005,6 +3054,7 @@ def _chain_next_drafts(
+     """
+     import mlx.core as mx
+ 
++    _dt = [time.perf_counter()] if _C35_DBG_T else None
+     model = gen_batch.model
+     if _dspark_host(model) is not None:
+         return _dspark_next_drafts(
+@@ -3043,7 +3093,8 @@ def _chain_next_drafts(
+         begin(state.mtp_cache, depth)
+ 
+     sparse_k = _sparse_top_k(sampler) if procs is None else 0
+-    coarse = _coarse_draft_head(model) if 0 < sparse_k <= 32 else None
++    # coder35b: with the draft vocab subset the proposer is mtp_forward itself (no 3-bit coarse head)
++    coarse = _coarse_draft_head(model) if 0 < sparse_k <= 32 and not os.environ.get("C35_DRAFT_VOCAB") else None
+     n = committed.shape[0]
+     if coarse is None:
+         logits, head_hidden = model.mtp_forward(
+@@ -3053,6 +3104,8 @@ def _chain_next_drafts(
+             return_hidden=True,
+             logits_keep=1,
+         )
++        if _dt is not None:
++            _dt.append(time.perf_counter())
+     else:
+         logits = None
+         source, head_hidden = coarse.hidden(
+@@ -3105,6 +3158,8 @@ def _chain_next_drafts(
+             break
+         # Start this step on the GPU while the host encodes the next one.
+         mx.async_eval(tok, h)
++        if _dt is not None:
++            _dt.append(time.perf_counter())
+         if coarse is None:
+             logits, head_hidden = model.mtp_forward(
+                 h,
+@@ -3124,6 +3179,8 @@ def _chain_next_drafts(
+         # host finishes emit bookkeeping; the next cycle's sync finds it
+         # materialized.
+         mx.async_eval(state.drafts)
++        if _dt is not None:
++            _dt.append(time.perf_counter()); _c35_dbg_draft_t(_dt)
+     else:
+         # Depth 0 (controller escape hatch): no drafts — the next cycle
+         # verifies [next_main] alone, i.e. a plain decode step. The fold
+@@ -3686,7 +3743,7 @@ def _mtp_next(gen_batch: Any, state: _MtpState) -> Any:
+         _bump_emit_stat(state, source)
+         return _emit_response(gen_batch, token_id, logprobs_1d, state.stats)
+ 
+-    _run_verify_cycle(gen_batch, state)
++    (_C35_PROF.get("w") or _C35_PROF.setdefault("w", _c35_profiled(_run_verify_cycle)))(gen_batch, state)
+     if not state.queue:
+         # Verify cycle should always populate the queue with at least the
+         # rejected-verify token; if it didn't, fall back to the standard
+@@ -3786,6 +3843,46 @@ def _bump_emit_stat(state: _MtpState, source: str) -> None:
+ # ---------------------------------------------------------------------------
+ 
+ 
++# coder35b: optional host-side profiler of verify cycles (env C35_PROFILE=<out .pstats>, C35_PROFILE_CYCLES=N)
++_C35_PROF = {"p": None, "n": 0}
++
++
++def _c35_profiled(fn):
++    import functools as _ft
++
++    @_ft.wraps(fn)
++    def wrapper(*args, **kwargs):
++        gap_path = os.environ.get("C35_GAPLOG")   # coder35b: per-cycle host time outside / inside the verify cycle (ms)
++        if gap_path:
++            import time as _t
++            st = _C35_PROF; t = _t.perf_counter(); last = st.get("end")
++            try:
++                return fn(*args, **kwargs)
++            finally:
++                e = _t.perf_counter(); st["end"] = e
++                st.setdefault("g", []).append(((t - last) * 1e3 if last else -1.0, (e - t) * 1e3))
++                if len(st["g"]) >= 50:
++                    with open(gap_path, "a") as f:
++                        f.write("".join(f"{a:.3f} {b:.3f}\n" for a, b in st["g"]))
++                    st["g"] = []
++        out_path = os.environ.get("C35_PROFILE")
++        if not out_path:
++            return fn(*args, **kwargs)
++        import cProfile
++        st = _C35_PROF
++        if st["p"] is None:
++            st["p"] = cProfile.Profile()
++        st["p"].enable()
++        try:
++            return fn(*args, **kwargs)
++        finally:
++            st["p"].disable(); st["n"] += 1
++            if st["n"] == int(os.environ.get("C35_PROFILE_CYCLES", "300")):
++                st["p"].dump_stats(out_path)
++
++    return wrapper
++
++
+ def _run_verify_cycle(gen_batch: Any, state: _MtpState) -> None:
+     """Dispatch to the depth-k chain cycle or the PR-990 depth-1 legacy cycle."""
+     if state.chain:
+@@ -3837,6 +3934,20 @@ def _sparse_top_k(sampler) -> int:
+     return top_k
+ 
+ 
++_C35_BLOCK_VERIFY = os.environ.get("C35_BLOCK_VERIFY", "0") == "1"   # coder35b: block verification (sampling only)
++
++
++def _c35_block_log_weights(ratio):
++    """log p_1 .. log p_k of block verification: log p_i = min(log p_{i-1} + ratio_{i-1}, 0), log p_0 = 0."""
++    import mlx.core as mx
++
++    out, prev = [], mx.zeros((), dtype=ratio.dtype)
++    for i in range(int(ratio.shape[0])):
++        prev = mx.minimum(prev + ratio[i], 0.0)
++        out.append(prev)
++    return mx.stack(out)
++
++
+ def _stochastic_verify_tokens_sparse(
+     sampler, combined_lp, drafts, draft_accept_lps, top_k
+ ):
+@@ -3886,15 +3997,29 @@ def _stochastic_verify_tokens_sparse(
+         q_at = mx.take_along_axis(q_rows, d[:, None], axis=-1).squeeze(-1)
+     ratio = p_at - q_at
+     u = mx.random.uniform(shape=(k,))
+-    acc = mx.logical_or(ratio >= 0, mx.log(u) < ratio)
+-    m_arr = mx.cumprod(acc.astype(mx.int32)).sum().reshape(1)
+     p_sup = mx.exp(logp[:k])
+     if isinstance(draft_accept_lps, SparseDraftQ):
+         match = ids[:k, :, None] == q_ids[:, None, :]
+         q_sup = mx.sum(mx.where(match, mx.exp(q_lp)[:, None, :], 0.0), axis=-1)
+     else:
+         q_sup = mx.exp(mx.take_along_axis(q_rows, ids[:k], axis=-1).astype(mx.float32))
+-    res = mx.maximum(p_sup - q_sup, 0.0)
++    if _C35_BLOCK_VERIFY:
++        # coder35b: block verification (Sun et al., ICLR 2025, Algorithm 2): p_i = min(p_{i-1} p(X_i)/q(X_i), 1),
++        # h_i = S_i / (S_i + 1 - p_i) with S_i = sum_x max(p_i p(x | X^i) - q(x | X^i), 0) for i < k, h_k = p_k
++        # (h_i = 0 when S_i = 0: the residual is empty), tau = the largest i with u_i <= h_i, the correction token
++        # from max(p_tau p(. | X^tau) - q(. | X^tau), 0). Output distribution = target distribution (Theorem 1).
++        lw = _c35_block_log_weights(ratio)
++        pw = mx.exp(mx.concatenate([mx.zeros((1,), dtype=lw.dtype), lw]))  # p_0 .. p_k
++        S = mx.sum(mx.maximum(pw[:k, None] * p_sup - q_sup, 0.0), axis=-1)  # S_0 .. S_{k-1}
++        h = mx.where(S[1:] > 0, S[1:] / (S[1:] + 1.0 - pw[1:k]), 0.0)
++        h = mx.concatenate([h, pw[k:]])  # h_1 .. h_k
++        passed = (u <= h).astype(mx.int32) * mx.arange(1, k + 1, dtype=mx.int32)
++        m_arr = mx.max(passed).reshape(1)
++        res = mx.maximum(pw[:k, None] * p_sup - q_sup, 0.0)
++    else:
++        acc = mx.logical_or(ratio >= 0, mx.log(u) < ratio)
++        m_arr = mx.cumprod(acc.astype(mx.int32)).sum().reshape(1)
++        res = mx.maximum(p_sup - q_sup, 0.0)
+     z = res.sum(axis=-1, keepdims=True)
+     res_dist = mx.where(z > 0, res, p_sup)
+     res_pos = mx.random.categorical(mx.log(res_dist))
+@@ -4014,6 +4139,83 @@ def _copy_draft_q(copied: List[int], vocab: int) -> SparseDraftQ:
+     return SparseDraftQ(ids, mx.zeros(ids.shape, dtype=mx.float32), vocab)
+ 
+ 
++_C35_MTP_PREDRAFT = os.environ.get("C35_MTP_PREDRAFT", "0") == "1"   # coder35b (EXP-103): MTP draft queued before the cycle sync
++
++
++def _c35_mtp_predraft(gen_batch: Any, state: _MtpState, hidden: Any, toks: Any, m_arr: Any, k: int):
++    """coder35b (EXP-103): queue the next MTP draft chain BEFORE this cycle's host sync (MTP head only).
++
++    The head folds all ``k + 1`` verify rows with the target's greedy tokens (rows ``0..m`` are exactly the committed
++    pairs; later rows are speculative and trimmed after the sync), the first draft is read from row ``m`` selected on
++    the GPU, and the chain continues as in ``_chain_next_drafts``. Proposer only: the verify stays exact. Returns the
++    pending state for ``_c35_mtp_adopt`` or None when the cycle shape is not supported."""
++    import mlx.core as mx
++
++    model = gen_batch.model
++    depth = state.controller.cur if state.controller is not None else state.depth
++    if (depth != k or k < 1 or not state.mtp_cache or state.head_clone or _dspark_host(model) is not None
++            or not os.environ.get("C35_DRAFT_VOCAB")):
++        return None
++    sampler = _resolve_draft_sampler(gen_batch, state)
++    sparse_k = _sparse_top_k(sampler)
++    t0 = time.perf_counter()
++    _pt = [t0] if _C35_DBG_T else None
++    _mtp_head_trim_to(state.mtp_cache, state.hist_offset)
++    h0 = state.hist_offset
++    hidden_rows = _head_input(model, hidden[:, : k + 1])
++    begin = getattr(model, "mtp_begin_cycle", None) or getattr(getattr(model, "_language_model", None), "mtp_begin_cycle", None)
++    if begin is not None:
++        begin(state.mtp_cache, depth)
++    logits, head_hidden = model.mtp_forward(hidden_rows, toks.reshape(1, k + 1), state.mtp_cache,
++                                            return_hidden=True, logits_keep=k + 1)
++    if _pt is not None:
++        _pt.append(time.perf_counter())
++    logits = mx.take(logits, m_arr, axis=1)
++    h = mx.take(head_hidden, m_arr, axis=1)
++    chain_cache = (_chain_tail_caches(model, state.mtp_cache) or state.mtp_cache) if depth > 1 else state.mtp_cache
++    draft_toks, draft_lps, draft_accept_lps, sparse_ids = [], [], [], []
++    for j in range(depth):
++        lp_2d = _logprobs(logits[:, -1, :])
++        if sparse_k:
++            tok, ids, accept_lp = _sample_draft_sparse(sampler, lp_2d, sparse_k)
++            sparse_ids.append(ids)
++        else:
++            tok, accept_lp = _sample_draft_with_logprobs(sampler, lp_2d)
++        draft_lps.append(lp_2d.squeeze(0))
++        tok = _ensure_uint32(tok)
++        draft_toks.append(tok)
++        draft_accept_lps.append(accept_lp.squeeze(0))
++        if j + 1 == depth:
++            break
++        if _pt is not None:
++            _pt.append(time.perf_counter())
++        mx.async_eval(tok, h)
++        if _pt is not None:
++            _pt.append(time.perf_counter())
++        logits, head_hidden = model.mtp_forward(h, tok.reshape(1, 1), chain_cache, return_hidden=True)
++        h = head_hidden[:, -1:]
++    drafts = mx.concatenate(draft_toks)
++    if _pt is not None:
++        _pt.append(time.perf_counter())
++    mx.async_eval(drafts)
++    if _pt is not None:
++        _pt.append(time.perf_counter()); _c35_dbg_draft_t(_pt)
++    if sparse_ids:
++        draft_accept_lps = SparseDraftQ(mx.stack(sparse_ids), mx.stack(draft_accept_lps), lp_2d.shape[-1])
++    state.stats.mtp_head_ms += (time.perf_counter() - t0) * 1000
++    return dict(h0=h0, drafts=drafts, draft_lps=draft_lps, draft_accept_lps=draft_accept_lps)
++
++
++def _c35_mtp_adopt(state: _MtpState, pre: dict, m: int, keep_drafts: bool) -> None:
++    """After the sync: keep the ``m + 1`` committed head entries and (unless a context copy replaces them) the drafts."""
++    _mtp_head_trim_to(state.mtp_cache, pre["h0"] + m + 1)
++    state.hist_offset = pre["h0"] + m + 1
++    if keep_drafts:
++        state.drafts = pre["drafts"]
++        state.draft_lps = pre["draft_lps"]
++        state.draft_accept_lps = pre["draft_accept_lps"]
++
++
+ def _run_verify_cycle_chain(
+     gen_batch: Any,
+     state: _MtpState,
+@@ -4103,6 +4305,7 @@ def _run_verify_cycle_chain(
+         and not defer_commit
+     )
+     predrafted = False
++    mtp_pre = None   # coder35b (EXP-103)
+ 
+     if k == 0:
+         # Depth-0 cycle (controller escape hatch): the forward above was a
+@@ -4133,6 +4336,10 @@ def _run_verify_cycle_chain(
+                     m_arr,
+                     mx.take(targets, m_arr),
+                 )
++            elif (_C35_MTP_PREDRAFT and drafter is None and procs is None and draft_jobs is None
++                  and commit_cache is None and not defer_commit and not copy_cycle):
++                mx.async_eval(host_arr)   # the host read gets its own completion event (as _predraft)
++                mtp_pre = _c35_mtp_predraft(gen_batch, state, hidden, targets.astype(mx.uint32), m_arr, k)
+             host = host_arr.tolist()
+         else:
+             host = greedy_result
+@@ -4164,6 +4371,18 @@ def _run_verify_cycle_chain(
+                 predrafted = _predraft(
+                     gen_batch, state, drafter, captured, result, m_arr, anchor
+                 )
++            elif (_C35_MTP_PREDRAFT and drafter is None and procs is None and draft_jobs is None
++                  and commit_cache is None and not defer_commit and not copy_cycle and k >= 1):
++                m_arr = result[:1]
++                anchor = mx.where(
++                    m_arr < k,
++                    mx.take(result[k + 1 : 2 * k + 1], mx.minimum(m_arr, k - 1)),
++                    result[2 * k + 1 : 2 * k + 2],
++                )
++                # committed tokens of rows 0..m: accepted drafts, then the residual/bonus draw (rows > m: speculative)
++                toks = mx.where(mx.arange(k + 1) < m_arr, mx.concatenate([result[1 : k + 1], anchor]), anchor)
++                mx.async_eval(result)
++                mtp_pre = _c35_mtp_predraft(gen_batch, state, hidden, toks.astype(mx.uint32), m_arr, k)
+             host = result.tolist()
+         m = int(host[0])
+         draft_ids = host[1 : k + 1]
+@@ -4266,7 +4485,7 @@ def _run_verify_cycle_chain(
+     def draft_next():
+         # --- MTP-head history + next draft chain (async-dispatched) ---
+         t0 = time.perf_counter()
+-        if draft_jobs is None and not state.head_clone:
++        if draft_jobs is None and not state.head_clone and not (mtp_pre is not None and m == m_gpu):
+             _mtp_head_trim_to(state.mtp_cache, state.hist_offset)
+         committed_ids = [int(d) for d in draft_ids[:m]] + [int(emit_last_id)]
+         committed = mx.array(committed_ids, dtype=mx.uint32)
+@@ -4289,14 +4508,17 @@ def _run_verify_cycle_chain(
+                 draft_jobs.append(job)
+         elif draft_jobs is None:
+             copied = _context_copy_drafts(gen_batch, state, committed_ids)
+-            _chain_next_drafts(
+-                gen_batch,
+-                state,
+-                hidden_rows,
+-                committed,
+-                prev_buf,
+-                depth=0 if copied else None,
+-            )
++            if mtp_pre is not None and m == m_gpu:
++                _c35_mtp_adopt(state, mtp_pre, m, keep_drafts=not copied)
++            else:
++                _chain_next_drafts(
++                    gen_batch,
++                    state,
++                    hidden_rows,
++                    committed,
++                    prev_buf,
++                    depth=0 if copied else None,
++                )
+             if copied:
+                 state.drafts = mx.array(copied, dtype=mx.uint32)
+                 state.draft_lps = []
+diff --git a/omlx/patches/mlx_lm_mtp/context_copy.py b/omlx/patches/mlx_lm_mtp/context_copy.py
+index dd46084..508d4f6 100644
+--- a/omlx/patches/mlx_lm_mtp/context_copy.py
++++ b/omlx/patches/mlx_lm_mtp/context_copy.py
+@@ -39,9 +39,9 @@ ENABLED = os.environ.get("OMLX_MTP_CONTEXT_COPY", "1").strip() != "0"
+ # accepted whole. Other targets keep 8-row windows (GLM-5.3's sparse caches
+ # cannot undo a longer verify block), so their copies stay at 7 tokens.
+ MAX_COPY = 15
+-_NARROW_COPY = 7
++_NARROW_COPY = int(os.environ.get("C35_COPY_NARROW", "7"))   # coder35b: env override
+ _MAX_MATCH = 64
+-_ENTER_MATCH = 12
++_ENTER_MATCH = int(os.environ.get("C35_COPY_ENTER", "12"))   # coder35b: env override
+ _MIN_COPY = 2
+ _CANDIDATES = 32
+ _MISSES_BEFORE_QUIET = 4
+diff --git a/omlx/patches/mlx_lm_mtp/prompt_priming.py b/omlx/patches/mlx_lm_mtp/prompt_priming.py
+index f2e9322..2439fde 100644
+--- a/omlx/patches/mlx_lm_mtp/prompt_priming.py
++++ b/omlx/patches/mlx_lm_mtp/prompt_priming.py
+@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
+ # is unaffected regardless. Priming folds must use the same variant as the
+ # decode-time history folds in batch_generator, hence the single definition
+ # here.
+-HEAD_HIDDEN_POST_NORM = True
++HEAD_HIDDEN_POST_NORM = __import__("os").environ.get("C35_MTP_PRENORM", "0") != "1"   # coder35b: env override (draft-side only)
+ 
+ _CTX_ATTR = "_omlx_mtp_prime_ctx"
+ _PLAN_ATTR = "_omlx_mtp_prime_plan"
+diff --git a/omlx/patches/mlx_vlm_mtp/qwen35_moe_vlm_runtime.py b/omlx/patches/mlx_vlm_mtp/qwen35_moe_vlm_runtime.py
+index 3552b36..72bc597 100644
+--- a/omlx/patches/mlx_vlm_mtp/qwen35_moe_vlm_runtime.py
++++ b/omlx/patches/mlx_vlm_mtp/qwen35_moe_vlm_runtime.py
+@@ -344,6 +344,15 @@ def _patch_vlm_language_model(q35moe_lang: Any) -> None:
+             logits_source = logits_source[:, -logits_keep:, :]
+         if self.args.tie_word_embeddings:
+             logits = self.model.embed_tokens.as_linear(logits_source)
++        elif _c35_draft_rows(self.lm_head) is not None:
++            # coder35b: draft-only reduced vocabulary (exact lm_head rows of a fixed subset, -inf elsewhere).
++            # Only the proposer sees this; the target verifies with the full head, so decoding stays exact.
++            ids, w, sc, bi = _c35_draft_rows(self.lm_head)
++            sub = mx.quantized_matmul(logits_source, w, sc, bi, transpose=True,
++                                      group_size=self.lm_head.group_size, bits=self.lm_head.bits)
++            full = mx.full(sub.shape[:-1] + (self.lm_head.weight.shape[0],), -mx.inf, dtype=sub.dtype)
++            full[..., ids] = sub
++            logits = full
+         else:
+             logits = self.lm_head(logits_source)
+         if return_hidden:
+@@ -352,7 +361,10 @@ def _patch_vlm_language_model(q35moe_lang: Any) -> None:
+ 
+     def make_mtp_cache(self):
+         if hasattr(self, "mtp"):
+-            return [KVCache() for _ in self.mtp.layers]
++            caches = [KVCache() for _ in self.mtp.layers]
++            for c in caches:   # coder35b: marks the proposer's caches (C35_MTP_WINDOW, draft-only attention window)
++                c._c35_mtp = True
++            return caches
+         return []
+ 
+     # Logits are lm_head(mtp(...)); draft chains may score candidates themselves.
+@@ -566,3 +578,21 @@ def _patch_vlm_outer_model_sanitize(q35moe_outer: Any) -> None:
+ 
+     cls.sanitize = sanitize
+     cls._omlx_mtp_runtime_sanitize_patched = True
++
++_C35_ROWS = {}
++
++
++def _c35_draft_rows(head):
++    """(ids, weight, scales, biases) of the draft vocab subset from env C35_DRAFT_VOCAB, or None."""
++    import json, os
++    path = os.environ.get("C35_DRAFT_VOCAB")
++    if not path or not hasattr(head, "scales"):
++        return None
++    got = _C35_ROWS.get(id(head))
++    if got is None:
++        ids = mx.array(json.load(open(path))["ids"], dtype=mx.uint32)
++        got = (ids, head.weight[ids], head.scales[ids], head.biases[ids])
++        mx.eval(*got)
++        _C35_ROWS[id(head)] = got
++        logging.getLogger(__name__).info("c35 draft vocab subset: %d rows from %s", ids.shape[0], path)
++    return got
+diff --git a/omlx/patches/qwen35_gdn_prework.py b/omlx/patches/qwen35_gdn_prework.py
+index 25bea24..6944311 100644
+--- a/omlx/patches/qwen35_gdn_prework.py
++++ b/omlx/patches/qwen35_gdn_prework.py
+@@ -774,6 +774,73 @@ def _kernel():
+     return _KERNEL
+ 
+ 
++# coder35b H17 (EXP-081): C35_GDN_CONV_WINDOWS=1 has the verify prework also
++# copy out the conv window after keeping k = 1..S-1 rows ([S-1, B, 3, C]), so a
++# commit keeping 0 < k < S rows takes ``windows[k - 1]`` (a view) instead of
++# concatenating the previous window with the block rows (two copy launches on
++# the next verify's critical path). Pure copies of the same values. Default off.
++_C35_CONV_WINDOWS = os.environ.get("C35_GDN_CONV_WINDOWS", "0") == "1"
++_WINDOWS_KERNEL = None
++
++_WINDOWS_COPY = """
++    if (row + 1 < uint(S)) {
++        for (uint j = 0; j < uint(NKEEP); ++j) {
++            uint p = row + 1 + j;
++            uint dst = ((row * uint(BATCH) + batch_idx) * uint(NKEEP) + j) * uint(C)
++                       + channel_base + lane * 4;
++            for (uint i = 0; i < 4; ++i) {
++                uint channel = channel_base + lane * 4 + i;
++                windows[dst + i] = p < uint(NKEEP)
++                    ? conv_state[(batch_idx * uint(NKEEP) + p) * uint(C) + channel]
++                    : qkv[(batch_idx * uint(S) + p - uint(NKEEP)) * uint(C) + channel];
++            }
++        }
++    }
++"""
++
++
++def gdn_prework_fused_windows(
++    qkv, conv_state, conv_w, q_scale, k_scale, hk, hv, dk, dv
++):
++    """``gdn_prework_fused`` (RMS q/k scaling) plus the kept-row conv windows:
++    returns ``(q, k, v, conv_out, windows)``, ``windows[k - 1]`` = the conv
++    state after keeping ``k`` of the ``S`` block rows, for ``0 < k < S``."""
++    global _WINDOWS_KERNEL
++    if _WINDOWS_KERNEL is None:
++        _WINDOWS_KERNEL = mx.fast.metal_kernel(
++            name="c35_qwen35_gdn_prework_windows",
++            input_names=["qkv", "conv_state", "conv_w", "q_scale", "k_scale"],
++            output_names=["q_out", "k_out", "v_out", "conv_out", "windows"],
++            source=_SOURCE + _WINDOWS_COPY,
++        )
++    batch_size, s_len, c_dim = qkv.shape
++    return _WINDOWS_KERNEL(
++        inputs=[qkv, conv_state, conv_w, q_scale, k_scale],
++        template=[
++            ("T", qkv.dtype),
++            ("HK", hk),
++            ("HV", hv),
++            ("DK", dk),
++            ("DV", dv),
++            ("NKEEP", 3),
++            ("C", c_dim),
++            ("S", s_len),
++            ("L2", 0),
++            ("BATCH", batch_size),
++        ],
++        grid=(32, batch_size * s_len, 2 * hk + hv),
++        threadgroup=(32, 1, 1),
++        output_shapes=[
++            (batch_size, s_len, hk, dk),
++            (batch_size, s_len, hk, dk),
++            (batch_size, s_len, hv, dv),
++            (batch_size, 3, c_dim),
++            (max(s_len - 1, 1), batch_size, 3, c_dim),
++        ],
++        output_dtypes=[qkv.dtype] * 5,
++    )
++
++
+ def gdn_prework_fused(
+     qkv, conv_state, conv_w, q_scale, k_scale, hk, hv, dk, dv, l2=False
+ ):
+@@ -2251,24 +2318,39 @@ def apply_qwen35_gdn_prework_patch() -> bool:
+         else:
+             q_scale = mx.array(inv * inv, dtype=inputs.dtype)
+             k_scale = mx.array(inv, dtype=inputs.dtype)
+-        q, k, v, conv_state = gdn_prework_fused(
+-            mixed_qkv,
+-            cache[0],
+-            layer.conv1d.weight,
+-            q_scale,
+-            k_scale,
+-            layer.num_k_heads,
+-            layer.num_v_heads,
+-            layer.head_k_dim,
+-            layer.head_v_dim,
+-            l2=l2_norm,
+-        )
++        windows = None
++        if _C35_CONV_WINDOWS and not l2_norm:
++            q, k, v, conv_state, windows = gdn_prework_fused_windows(
++                mixed_qkv,
++                cache[0],
++                layer.conv1d.weight,
++                q_scale,
++                k_scale,
++                layer.num_k_heads,
++                layer.num_v_heads,
++                layer.head_k_dim,
++                layer.head_v_dim,
++            )
++        else:
++            q, k, v, conv_state = gdn_prework_fused(
++                mixed_qkv,
++                cache[0],
++                layer.conv1d.weight,
++                q_scale,
++                k_scale,
++                layer.num_k_heads,
++                layer.num_v_heads,
++                layer.head_k_dim,
++                layer.head_v_dim,
++                l2=l2_norm,
++            )
+         fused = not l2_norm and qwen35_gdn_verify_fused.fused_eligible(
+             layer, q, cache, length
+         )
+         if fused and 0 not in cache._speculation["records"]:
+             qwen35_gdn_verify_fused.record_window(
+-                cache, 0, cache[0], mixed_qkv, layer.conv_kernel_size - 1
++                cache, 0, cache[0], mixed_qkv, layer.conv_kernel_size - 1,
++                *(() if windows is None else (windows,)),
+             )
+         else:
+             conv_input = mx.concatenate([cache[0], mixed_qkv], axis=1)
+diff --git a/omlx/patches/qwen35_gdn_verify_fused.py b/omlx/patches/qwen35_gdn_verify_fused.py
+index 8581060..18f1a36 100644
+--- a/omlx/patches/qwen35_gdn_verify_fused.py
++++ b/omlx/patches/qwen35_gdn_verify_fused.py
+@@ -224,7 +224,112 @@ _NORM_GATE = """
+ """
+ 
+ 
+-def _kernel(main: bool, replay: bool):
++# coder35b H9c (EXP-081): C35_GDN_REC_ROWS=R > 1 gives each simdgroup R state
++# rows (dv) instead of one. Every row keeps the one-row arithmetic above (same
++# lane layout, same per-row reduction order and simd_sum); the R rows only run
++# interleaved and share the per-(t, head) gate/beta values. Default 1 = the
++# kernels above, unchanged.
++_REC_ROWS = int(__import__("os").environ.get("C35_GDN_REC_ROWS", "1"))
++
++_PROLOGUE_R = """
++    constexpr int NK = Dk / 32;
++    uint lane = thread_position_in_threadgroup.x;
++    uint n = thread_position_in_grid.z;
++    uint b_idx = n / Hv;
++    uint hv = n % Hv;
++    uint hk = hv / (Hv / Hk);
++    uint dv0 = thread_position_in_grid.y * RR;
++    float st[RR][NK];
++    for (int j = 0; j < RR; ++j) {
++        auto s = state_in + (n * Dv + dv0 + j) * Dk + lane * NK;
++        for (int i = 0; i < NK; ++i)
++            st[j][i] = static_cast<float>(s[i]);
++    }
++    float neg_a = -metal::precise::exp(static_cast<float>(A_log[hv]));
++    InT dtb = dt_bias[hv];
++"""
++
++_REPLAY_R = """
++    {
++        int keep = keep_rows[b_idx];
++        float lane_g = 0.0f, lane_b = 0.0f;
++        if (int(lane) < keep) {
++            int gi = (b_idx * P + lane) * Hv + hv;
++            lane_g = gdn_decay(pa[gi], dtb, neg_a);
++            lane_b = gdn_beta(pb[gi]);
++        }
++        for (int t = 0; t < keep; ++t) {
++            float gt = simd_shuffle(lane_g, ushort(t));
++            float bt = simd_shuffle(lane_b, ushort(t));
++            auto kp = pk + ((b_idx * P + t) * Hk + hk) * Dk + lane * NK;
++            float kv[RR];
++            for (int j = 0; j < RR; ++j) {
++                kv[j] = 0.0f;
++                for (int i = 0; i < NK; ++i) {
++                    st[j][i] = st[j][i] * gt;
++                    kv[j] += st[j][i] * kp[i];
++                }
++            }
++            for (int j = 0; j < RR; ++j)
++                kv[j] = simd_sum(kv[j]);
++            for (int j = 0; j < RR; ++j) {
++                float delta = (pv[((b_idx * P + t) * Hv + hv) * Dv + dv0 + j] - kv[j]) * bt;
++                for (int i = 0; i < NK; ++i)
++                    st[j][i] = st[j][i] + kp[i] * delta;
++            }
++        }
++        for (int j = 0; j < RR; ++j) {
++            auto o = state_out + (n * Dv + dv0 + j) * Dk + lane * NK;
++            for (int i = 0; i < NK; ++i)
++                o[i] = st[j][i];
++        }
++    }
++"""
++
++_MAIN_R = """
++    float lane_g = 0.0f, lane_b = 0.0f;
++    if (int(lane) < T) {
++        int gi = (b_idx * T + lane) * Hv + hv;
++        lane_g = gdn_decay(a[gi], dtb, neg_a);
++        lane_b = gdn_beta(b[gi]);
++    }
++    for (int t = 0; t < T; ++t) {
++        float gt = simd_shuffle(lane_g, ushort(t));
++        float bt = simd_shuffle(lane_b, ushort(t));
++        auto kp = k + ((b_idx * T + t) * Hk + hk) * Dk + lane * NK;
++        auto qp = q + ((b_idx * T + t) * Hk + hk) * Dk + lane * NK;
++        float kv[RR];
++        for (int j = 0; j < RR; ++j) {
++            kv[j] = 0.0f;
++            for (int i = 0; i < NK; ++i) {
++                st[j][i] = st[j][i] * gt;
++                kv[j] += st[j][i] * kp[i];
++            }
++        }
++        for (int j = 0; j < RR; ++j)
++            kv[j] = simd_sum(kv[j]);
++        float acc[RR];
++        for (int j = 0; j < RR; ++j) {
++            float delta = (v[((b_idx * T + t) * Hv + hv) * Dv + dv0 + j] - kv[j]) * bt;
++            acc[j] = 0.0f;
++            for (int i = 0; i < NK; ++i) {
++                st[j][i] = st[j][i] + kp[i] * delta;
++                acc[j] += st[j][i] * qp[i];
++            }
++        }
++        for (int j = 0; j < RR; ++j)
++            acc[j] = simd_sum(acc[j]);
++        if (lane == 0) {
++            for (int j = 0; j < RR; ++j)
++                y[((b_idx * T + t) * Hv + hv) * Dv + dv0 + j] = static_cast<InT>(acc[j]);
++        }
++    }
++"""
++
++
++def _kernel(main: bool, replay: bool, rows: int = 1):
++    if rows > 1:
++        return _kernel_rows(main, replay, rows)
+     key = (main, replay)
+     kernel = _KERNELS.get(key)
+     if kernel is not None:
+@@ -252,6 +357,43 @@ def _kernel(main: bool, replay: bool):
+     return kernel
+ 
+ 
++def _kernel_rows(main: bool, replay: bool, rows: int):
++    """``_kernel`` with ``rows`` state rows per simdgroup (C35_GDN_REC_ROWS)."""
++    key = (main, replay, rows)
++    kernel = _KERNELS.get(key)
++    if kernel is not None:
++        return kernel
++    inputs = ["state_in", "A_log", "dt_bias"]
++    outputs = []
++    body = f"    constexpr int RR = {rows};\n" + _PROLOGUE_R
++    if replay:
++        inputs += ["pk", "pv", "pa", "pb", "keep_rows"]
++        outputs.append("state_out")
++        body += _REPLAY_R
++    if main:
++        inputs += ["q", "k", "v", "a", "b"]
++        outputs.insert(0, "y")
++        body += _MAIN_R
++    name = "c35_gdn_verify_r" + str(rows) + ("_main" if main else "") + ("_replay" if replay else "")
++    kernel = mx.fast.metal_kernel(
++        name=name,
++        input_names=inputs,
++        output_names=outputs,
++        source=body,
++        header=_HELPERS,
++    )
++    _KERNELS[key] = kernel
++    return kernel
++
++
++def _rec_grid(geo, rows: int):
++    """Launch grid of the recurrence kernels with ``rows`` dv rows per simdgroup."""
++    if rows == 1:
++        return geo["grid"]
++    x, dv, z = geo["grid"]
++    return (x, dv // rows, z)
++
++
+ @cache
+ def _sigmoid_exp():
+     """Match served SiLU across all gate encodings before fusing the norm.
+@@ -321,6 +463,9 @@ def _geometry(layer, batch):
+     )
+ 
+ 
++_FAST_COMMIT = __import__("os").environ.get("C35_FAST_COMMIT", "0") == "1"   # coder35b (EXP-101): host fast path of the commit
++
++
+ def fused_eligible(layer, q, cache, length) -> bool:
+     """One block covering the whole speculative window, stock norm, bf16/fp16."""
+     transaction = getattr(cache, "_speculation", None)
+@@ -401,10 +546,11 @@ def verify_block(layer, cache, q, k, v, a, b, z):
+         output_shapes.append(base.shape)
+         output_dtypes.append(mx.float32)
+     inputs += [q, k, v, a, b]
+-    outs = _kernel(True, replay)(
++    rec_rows = _REC_ROWS if geo["Dv"] % (4 * _REC_ROWS) == 0 else 1
++    outs = _kernel(True, replay, rec_rows)(
+         inputs=inputs,
+         template=template,
+-        grid=geo["grid"],
++        grid=_rec_grid(geo, rec_rows),
+         threadgroup=(32, 4, 1),
+         output_shapes=output_shapes,
+         output_dtypes=output_dtypes,
+@@ -431,29 +577,32 @@ def record_block(cache, index, layer, start, rows, length):
+     full = mx.full((start.shape[0],), length, dtype=mx.int32)
+     final = replay_state(layer, start, rows, full)
+     transaction = cache._speculation
+-    transaction["records"][int(index)] = ("replay", start, rows, int(length), layer)
++    transaction["records"][int(index)] = ("replay", start, rows, int(length), layer, final, full)
+     cache[index] = final
+     cache._omlx_gdn_pending = (final, start, rows, full)
+ 
+ 
+-def record_window(cache, index, previous, rows, width):
++def record_window(cache, index, previous, rows, width, *windows):
+     """Record a causal window as its previous state plus the block rows.
+ 
+     The commit slices the kept window from ``rows`` when it lies inside the
+-    block, so no concatenation runs per verify.
++    block, so no concatenation runs per verify. ``windows`` (coder35b H17,
++    optional): the precomputed windows after keeping 1..S-1 rows, [S-1, B, w, C].
+     """
+     transaction = cache._speculation
+-    transaction["records"][int(index)] = ("window_pair", previous, rows, int(width))
++    transaction["records"][int(index)] = ("window_pair", previous, rows, int(width), *windows)
+ 
+ 
+ def _commit_window(cache, index, record, lengths):
+-    _, previous, rows, width = record
++    _, previous, rows, width, *windows = record
+     if len(set(lengths)) == 1:
+         keep = lengths[0]
+         if keep == 0:
+             state = previous
+         elif keep >= width:
+             state = rows[:, keep - width : keep]
++        elif windows and keep < rows.shape[1]:
++            state = windows[0][keep - 1]
+         else:
+             state = mx.concatenate([previous[:, keep:], rows[:, :keep]], axis=1)
+     else:
+@@ -465,10 +614,16 @@ def _commit_window(cache, index, record, lengths):
+ 
+ 
+ def _commit_replay(cache, index, record, lengths):
+-    _, start, rows, _length, layer = record
++    _, start, rows, length, layer, *full_block = record
+     if all(value == 0 for value in lengths):
+         cache[index] = start
+         return
++    if _FAST_COMMIT and full_block and all(value == length for value in lengths):
++        # coder35b (EXP-101): keeping the whole block is the record's own final state (built with keep = length)
++        final, full = full_block
++        cache[index] = final
++        cache._omlx_gdn_pending = (final, start, rows, full)
++        return
+     keep = mx.array(lengths, dtype=mx.int32)
+     state = replay_state(layer, start, rows, keep)
+     cache[index] = state
+@@ -531,6 +686,22 @@ def apply_arrays_cache_replay_patch() -> bool:
+ 
+     def commit_speculation(self, lengths, generation=None):
+         transaction = self._speculation
++        if _FAST_COMMIT and transaction is not None and (generation is None or generation == transaction["generation"]):
++            records = transaction["records"]
++            if (isinstance(lengths, list) and lengths and len(set(lengths)) == 1
++                    and 0 <= lengths[0] <= transaction["length"] and len(lengths) == self.batch_size
++                    and records and all(r[0] in ("replay", "window_pair", "deferred") for r in records.values())):
++                # coder35b (EXP-101): the stock path validates three times and replays nothing here
++                for index, record in records.items():
++                    if record[0] == "replay":
++                        _commit_replay(self, index, record, lengths)
++                    elif record[0] == "deferred":
++                        _commit_deferred(self, index, record, lengths)
++                    else:
++                        _commit_window(self, index, record, lengths)
++                self._restore_speculative_metadata(lengths, transaction["initial_metadata"])
++                self._speculation = None
++                return
+         custom = {}
+         if transaction is not None:
+             custom = {
+diff --git a/omlx/patches/qwen35_moe_routed_decode.py b/omlx/patches/qwen35_moe_routed_decode.py
+index c8c3357..fdc98da 100644
+--- a/omlx/patches/qwen35_moe_routed_decode.py
++++ b/omlx/patches/qwen35_moe_routed_decode.py
+@@ -129,6 +129,8 @@ _TOPK_FOLD_MAX_ROWS = 3
+ # kernels' 16-row ceiling; the kernels index rows from the grid.
+ WINDOW_MAX_ROWS = 16
+ _WINDOW_DISABLED = False
++_C35_UNION_LOG = os.environ.get("C35_UNION_LOG")  # coder35b: diagnostic histogram file of (rows, union) per MoE window
++_C35_UNION: dict = {}
+ _WINDOW_PROVEN = False
+ 
+ 
+@@ -947,6 +949,13 @@ def routed_verify_window(block, x):
+         return None
+     x = x.reshape(rows, hidden)
+     logits = plan.router_logits(x)
++    if _C35_UNION_LOG and rows > 1:   # coder35b diagnostic: distinct experts per window (host sync per layer)
++        top = mx.argpartition(-logits.astype(mx.float32), plan.top_k - 1, axis=-1)[:, : plan.top_k]
++        key = (rows, len(set(np.array(top).reshape(-1).tolist())))
++        _C35_UNION[key] = _C35_UNION.get(key, 0) + 1
++        if sum(_C35_UNION.values()) % 4000 == 0:
++            with open(_C35_UNION_LOG, "w") as f:
++                f.write("".join(f"{r} {u} {n}\n" for (r, u), n in sorted(_C35_UNION.items())))
+     folded = _topk_folds(plan, logits)
+     if not folded:
+         routing = softmax_topk_rows(logits, plan.top_k, WINDOW_MAX_ROWS)
+diff --git a/omlx/patches/qwen35_verify_qmm.py b/omlx/patches/qwen35_verify_qmm.py
+index 271bb64..34af1a9 100644
+--- a/omlx/patches/qwen35_verify_qmm.py
++++ b/omlx/patches/qwen35_verify_qmm.py
+@@ -1387,6 +1387,62 @@ def add_rms_norm(a, b, norm):
+     )
+ 
+ 
++_C35_ADD_RMS_SOURCE = """
++    // coder35b: (a + b, rms_norm(a + b) * w) for D <= 4096 with MLX 0.32.3 rms_single_row arithmetic (D/4 threads per
++    // row, 4 values per thread, fp32 sum of squares, simd_sum + threadgroup sum, precise rsqrt), the add folded into the load
++    const uint gid = threadgroup_position_in_grid.x;
++    const uint lid = thread_position_in_threadgroup.x;
++    const uint lane = thread_index_in_simdgroup;
++    const uint sgi = simdgroup_index_in_threadgroup;
++    threadgroup float local_inv_mean[1];
++    threadgroup float local_sums[32];
++    float acc = 0;
++    float tx[4];
++    const size_t base = size_t(gid) * D + lid * 4;
++    for (int i = 0; i < 4; i++) {
++        const T v = a[base + i] + b[base + i];
++        s_out[base + i] = v;
++        tx[i] = v;
++        acc += tx[i] * tx[i];
++    }
++    acc = simd_sum(acc);
++    if (sgi == 0) local_sums[lane] = 0;
++    threadgroup_barrier(mem_flags::mem_threadgroup);
++    if (lane == 0) local_sums[sgi] = acc;
++    threadgroup_barrier(mem_flags::mem_threadgroup);
++    if (sgi == 0) {
++        acc = simd_sum(local_sums[lane]);
++        if (lane == 0) local_inv_mean[0] = metal::precise::rsqrt(acc / axis_size[0] + eps[0]);
++    }
++    threadgroup_barrier(mem_flags::mem_threadgroup);
++    for (int i = 0; i < 4; i++) n_out[base + i] = w[lid * 4 + i] * static_cast<T>(tx[i] * local_inv_mean[0]);
++"""
++
++
++def c35_add_rms_norm(a, b, norm):
++    """coder35b: ``(a + b, norm(a + b))`` in one launch, bit-identical to the two MLX ops for D <= 4096
++    (``bench/add_rms_test.py``)."""
++    import mlx.core as mx
++
++    if "c35_add_rms" not in _KERNEL_CACHE:
++        _KERNEL_CACHE["c35_add_rms"] = mx.fast.metal_kernel(
++            name="c35_add_rms_single",
++            input_names=["a", "b", "w", "eps", "axis_size"],
++            output_names=["s_out", "n_out"],
++            source=_C35_ADD_RMS_SOURCE,
++        )
++    D = int(a.shape[-1])
++    rows = a.size // D
++    return _KERNEL_CACHE["c35_add_rms"](
++        inputs=[a, b, norm.weight, mx.array([norm.eps], dtype=mx.float32), mx.array([D], dtype=mx.uint32)],
++        template=[("T", a.dtype), ("D", D)],
++        grid=(D // 4 * rows, 1, 1),
++        threadgroup=(D // 4, 1, 1),
++        output_shapes=[a.shape, a.shape],
++        output_dtypes=[a.dtype, a.dtype],
++    )
++
++
+ def _add_rms_eligible(a, b, norm) -> bool:
+     import mlx.core as mx
+     import mlx.nn as nn
+@@ -1469,9 +1525,50 @@ def _patch_verify_layer_flush() -> None:
+         _ROUTE_ARMED.normed = (hidden, normed)
+         return hidden
+ 
++    import os as _os
++    _c35_flush = int(_os.environ.get("C35_VERIFY_FLUSH", "0"))   # coder35b: also pipeline the row-exact verify graph
++    _c35_fuse = _os.environ.get("C35_FUSE_GLUE", "0") == "1"
++
++    def _c35_glue_ok(hidden, norm):
++        import mlx.nn as nn
++
++        return (
++            _c35_fuse
++            and type(norm) is nn.RMSNorm
++            and hidden.dtype == mx.bfloat16
++            and norm.weight.dtype == hidden.dtype
++            and hidden.shape[-1] % 128 == 0
++            and hidden.shape[-1] <= 4096
++            and hidden.size // hidden.shape[-1] <= 16
++        )
++
++    def _c35_layer(self, layer, hidden, mask, cache, position_ids, position_embeddings):
++        # the stock row-exact layer with each "residual add + next RMSNorm" pair in one launch (bit-identical)
++        pending = getattr(_ROUTE_ARMED, "normed", None)
++        normed = pending[1] if pending is not None and pending[0] is hidden else layer.input_layernorm(hidden)
++        if layer.is_linear:
++            residual = self._gated_delta(layer.linear_attn, normed, mask, cache)
++        else:
++            residual = self._attention(layer.self_attn, normed, mask, cache, position_ids, position_embeddings)
++        hidden, normed = c35_add_rms_norm(hidden, residual, layer.post_attention_layernorm)
++        out = self._feed_forward(layer.mlp, normed)
++        nxt = (getattr(_ROUTE_ARMED, "next_norm", None) or {}).get(id(layer))
++        if nxt is None:
++            return hidden + out
++        hidden, normed = c35_add_rms_norm(hidden, out, nxt)
++        _ROUTE_ARMED.normed = (hidden, normed)
++        return hidden
++
+     def _layer(self, layer, hidden, *args, **kwargs):
+         if not _is_armed():
+-            return original(self, layer, hidden, *args, **kwargs)
++            fused = _c35_glue_ok(hidden, layer.post_attention_layernorm) and is_row_exact_armed() and not kwargs
++            out = (_c35_layer if fused else original)(self, layer, hidden, *args, **kwargs)
++            if _c35_flush and is_row_exact_armed():
++                count = getattr(_ROUTE_ARMED, "layers", 0) + 1
++                _ROUTE_ARMED.layers = count
++                if count % _c35_flush == 0:
++                    mx.async_eval(out)   # GPU runs the first layers while Python builds the rest (same ops, same numerics)
++            return out
+         hidden = _mixed(self, layer, hidden, *args, **kwargs)
+         count = getattr(_ROUTE_ARMED, "layers", 0) + 1
+         _ROUTE_ARMED.layers = count
+diff --git a/omlx/patches/qwen35_verify_sdpa_split.py b/omlx/patches/qwen35_verify_sdpa_split.py
+index a793755..043571f 100644
+--- a/omlx/patches/qwen35_verify_sdpa_split.py
++++ b/omlx/patches/qwen35_verify_sdpa_split.py
+@@ -796,6 +796,10 @@ def prefix_tail_attention(queries, keys, values, tail_keys, tail_values, scale):
+     return out
+ 
+ 
++import os as _os
++_C35_MTP_WINDOW = int(_os.environ.get("C35_MTP_WINDOW", "0"))
++
++
+ class ChainKVCache:
+     """Draft-chain view of a ``KVCache``: new rows stay in a short tail."""
+ 
+@@ -819,8 +823,11 @@ class ChainKVCache:
+ 
+     def attention(self, queries, scale, mask):
+         base = self.base
+-        keys = base.keys[..., : base.offset, :]
+-        values = base.values[..., : base.offset, :]
++        # coder35b: C35_MTP_WINDOW = draft-only attention window of the MTP head (the proposer; verification is exact)
++        w = _C35_MTP_WINDOW if getattr(base, "_c35_mtp", False) else 0
++        start = max(0, base.offset - w) if w else 0
++        keys = base.keys[..., start : base.offset, :]
++        values = base.values[..., start : base.offset, :]
+         if (
+             mask is None
+             and queries.shape[0] == 1
+diff --git a/omlx/patches/row_exact_qmv.py b/omlx/patches/row_exact_qmv.py
+index 59f02a3..e56631b 100644
+--- a/omlx/patches/row_exact_qmv.py
++++ b/omlx/patches/row_exact_qmv.py
+@@ -35,13 +35,19 @@ logger = logging.getLogger(__name__)
+ 
+ MAX_ROWS = 16
+ # Output columns per simdgroup (qmv's own tile: a threadgroup owns 8).
+-_RPS = 4
++_RPS = int(__import__("os").environ.get("C35_RPS", "4"))  # coder35b: env override (tile width only, same per-column arithmetic)
+ # Verify projections run in a dependent chain, so latency wins: below this
+ # many tiles every row gets its own threadgroups (rows of a tile are adjacent
+ # in the grid and hit cache); wider outputs (the vocabulary head) share each
+ # weight pass between rows, up to this many per-lane input values.
+-_SHARED_ROWS_MIN_TILES = 2048
++_SHARED_ROWS_MIN_TILES = int(__import__("os").environ.get("C35_SHARED_ROWS_MIN_TILES", "2048"))  # coder35b: env override
+ _ROW_VALUES_BUDGET = 32
++# coder35b H9c (EXP-081): C35_RPS6U=R runs the multi-row 6-bit qmv_fast
++# projections (shared-row tiles) on the fully unrolled tile with R columns per
++# simdgroup, when the tile is inside ``unrolled_tile_ok`` and this GPU computes
++# it bit-exactly (``unrolled_tile_verified``); otherwise the plan is unchanged.
++# Per-column arithmetic is the same qmv_fast traversal. Default 0 = off.
++_RPS6U = int(__import__("os").environ.get("C35_RPS6U", "0"))
+ 
+ # Per row this is qmv_fast_impl (FAST) or qmv_impl, exactly as
+ # moe_verify_gather runs them per (row, expert) pair; the row loop sits
+@@ -424,13 +430,15 @@ class _Plan:
+ 
+     __slots__ = ("kernel", "template", "grid", "output_shapes", "output_dtypes", "bias")
+ 
+-    def __init__(self, linear: nn.QuantizedLinear, x: mx.array, rows: int):
++    def __init__(self, linear: nn.QuantizedLinear, x: mx.array, rows: int, unrolled_rps: int = 0):
+         k = int(x.shape[-1])
+         n = int(linear.weight.shape[0])
+         bits = int(linear.bits)
+         fast = qmv_fast_layout(k, n, bits)
+         rows_per_group, rps = _launch_geometry(bits, fast, n, rows)
+-        self.kernel = _kernel(bits, int(linear.group_size), fast)
++        if unrolled_rps:
++            rps = unrolled_rps
++        self.kernel = _kernel(bits, int(linear.group_size), fast, bool(unrolled_rps))
+         self.template = [
+             ("T", x.dtype),
+             ("K_SIZE", k),
+@@ -453,10 +461,51 @@ def _plan(linear: nn.QuantizedLinear, x: mx.array, rows: int) -> _Plan | None:
+     key = (rows, x.dtype, x.shape[-1])
+     if key not in plans:
+         supported = rows <= MAX_ROWS and _kernel_supported(linear, x)
+-        plans[key] = _Plan(linear, x, rows) if supported else None
++        plans[key] = (_RPS6U and supported and _rps6u_plan(linear, x, rows)) or (
++            _Plan(linear, x, rows) if supported else None
++        )
+     return plans[key]
+ 
+ 
++def _rps6u_tile(bits: int, fast: bool, n: int, rows: int) -> tuple[int, int]:
++    """(rows per threadgroup, columns per simdgroup) of the C35_RPS6U tile for
++    this launch, or (0, 0) where it does not apply."""
++    if not (_RPS6U and bits == 6 and fast):
++        return 0, 0
++    rows_per_group, _ = _launch_geometry(bits, fast, n, rows)
++    if rows_per_group < 2 or not unrolled_tile_ok(bits, _RPS6U, rows_per_group):
++        return 0, 0
++    return rows_per_group, _RPS6U
++
++
++def _rps6u_plan(linear: nn.QuantizedLinear, x: mx.array, rows: int):
++    """A ``_Plan`` on the C35_RPS6U unrolled tile, if it applies and this GPU
++    computes it bit-exactly; else None."""
++    k = int(x.shape[-1])
++    n = int(linear.weight.shape[0])
++    bits, group_size = int(linear.bits), int(linear.group_size)
++    rows_per_group, rps = _rps6u_tile(bits, qmv_fast_layout(k, n, bits), n, rows)
++    if not rps:
++        return None
++    plan = _Plan(linear, x, rows, rps)
++    weights = (linear.weight, linear.scales, linear.biases)
++
++    def run(probe):
++        return plan.kernel(
++            inputs=[probe, *weights],
++            template=plan.template,
++            grid=plan.grid,
++            threadgroup=(32, 2, 1),
++            output_shapes=plan.output_shapes,
++            output_dtypes=plan.output_dtypes,
++        )
++
++    shape = ("rps6u", bits, group_size, k, n, rows, rows_per_group, rps, x.dtype)
++    if not unrolled_tile_verified(shape, run, [weights], bits, group_size, rows, k, x.dtype):
++        return None
++    return plan
++
++
+ def quantized_linear(linear: nn.QuantizedLinear, x: mx.array) -> mx.array:
+     """``linear(x)`` for ``x`` of shape [..., K], each row with one-row arithmetic.
+ 
+@@ -575,6 +624,21 @@ def _group_plan(linears, x: mx.array, rows: int, geometry=None) -> _GroupPlan |
+     return plans[key]
+ 
+ 
++def _rps6u_group_plan(linears, x: mx.array, rows: int):
++    """``_group_plan`` on the C35_RPS6U unrolled tile, if it applies and this
++    GPU computes it bit-exactly (else None: the caller keeps its plan)."""
++    first = linears[0]
++    k = int(x.shape[-1])
++    n = max(int(linear.weight.shape[0]) for linear in linears)
++    fast = qmv_fast_layout(k, int(first.weight.shape[0]), int(first.bits))
++    rows_per_group, rps = _rps6u_tile(int(first.bits), fast, n, rows)
++    if not rps:
++        return None
++    plan = _group_plan(linears, x, rows, (rows_per_group, rps, True))
++    unrolled = _group_kernel(int(first.bits), int(first.group_size), fast, len(linears), True)
++    return plan if plan is not None and plan.kernel is unrolled else None
++
++
+ def quantized_linears(linears, x: mx.array) -> tuple:
+     """``tuple(linear(x) for linear in linears)`` with one-row arithmetic per
+     row, in a single launch when the projections share their quantization."""
+@@ -582,7 +646,9 @@ def quantized_linears(linears, x: mx.array) -> tuple:
+     rows = 1
+     for size in lead:
+         rows *= size
+-    plan = _group_plan(linears, x, rows) if 1 < rows and 1 < len(linears) <= 4 else None
++    plan = None
++    if 1 < rows and 1 < len(linears) <= 4:
++        plan = (_RPS6U and _rps6u_group_plan(tuple(linears), x, rows)) or _group_plan(linears, x, rows)
+     if plan is None:
+         return tuple(quantized_linear(linear, x) for linear in linears)
+     outputs = plan.launch(linears, x.reshape(rows, x.shape[-1]))
